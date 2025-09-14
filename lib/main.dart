@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:animated_bottom_navigation_bar/animated_bottom_navigation_bar.dart';
-import 'package:soyo/Screens/ExploreScreen.dart';
+import 'package:soyo/Screens/ExploreMovies.dart';
 import 'package:soyo/Screens/homescreen.dart';
 import 'package:soyo/Screens/savedscreen.dart';
 import 'package:soyo/Screens/settingsScreen.dart';
@@ -14,7 +14,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Movie Stream App',
+      title: 'SOYO',
       theme: ThemeData(
         primarySwatch: Colors.blue,
         brightness: Brightness.dark,

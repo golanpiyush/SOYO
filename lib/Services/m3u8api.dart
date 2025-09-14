@@ -197,4 +197,90 @@ class M3U8Api {
       throw Exception('Failed to get movie: $e');
     }
   }
+
+  // In M3U8Api class
+  Future<Map<String, dynamic>> searchTvShow({
+    required String showName,
+    required int season,
+    required int episode,
+    String? quality,
+    bool fetchSubs = false,
+    Function(String)? onStatusUpdate,
+  }) async {
+    try {
+      // Start the search
+      final startResponse = await http.post(
+        Uri.parse('$baseUrl/search/start'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'moviename': showName,
+          'tmdb_id': null, // We'll search by name first
+          'type': 'tv',
+          'season_number': season,
+          'episode_number': episode,
+          'quality': quality,
+          'fetch_subs': fetchSubs ? 'yes' : 'no',
+        }),
+      );
+
+      if (startResponse.statusCode != 200) {
+        throw Exception('Failed to start search: ${startResponse.statusCode}');
+      }
+
+      final startData = jsonDecode(startResponse.body);
+      final searchId = startData['search_id'];
+
+      if (searchId == null) {
+        throw Exception('No search ID received');
+      }
+
+      // Poll for status updates
+      return await _pollSearchStatus(searchId, onStatusUpdate);
+    } catch (e) {
+      throw Exception('Search failed: $e');
+    }
+  }
+
+  // Alternative method using direct TMDB ID
+  Future<Map<String, dynamic>> searchTvShowByTmdbId({
+    required int tmdbId,
+    required int season,
+    required int episode,
+    String? quality,
+    bool fetchSubs = false,
+    Function(String)? onStatusUpdate,
+  }) async {
+    try {
+      // Start the search
+      final startResponse = await http.post(
+        Uri.parse('$baseUrl/search/start'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'moviename': '', // Empty name since we're using TMDB ID
+          'tmdb_id': tmdbId.toString(),
+          'type': 'tv',
+          'season_number': season,
+          'episode_number': episode,
+          'quality': quality,
+          'fetch_subs': fetchSubs ? 'yes' : 'no',
+        }),
+      );
+
+      if (startResponse.statusCode != 200) {
+        throw Exception('Failed to start search: ${startResponse.statusCode}');
+      }
+
+      final startData = jsonDecode(startResponse.body);
+      final searchId = startData['search_id'];
+
+      if (searchId == null) {
+        throw Exception('No search ID received');
+      }
+
+      // Poll for status updates
+      return await _pollSearchStatus(searchId, onStatusUpdate);
+    } catch (e) {
+      throw Exception('Search failed: $e');
+    }
+  }
 }

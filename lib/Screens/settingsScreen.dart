@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:soyo/Services/m3u8api.dart';
 
 import 'savedscreen.dart';
@@ -32,22 +33,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildServerSection(),
-            SizedBox(height: 20),
+            // _buildServerSection(),
+            // SizedBox(height: 20),
             _buildStreamingSection(),
             SizedBox(height: 20),
-            _buildAppearanceSection(),
-            SizedBox(height: 20),
-            _buildStorageSection(),
-            SizedBox(height: 20),
+            // _buildAppearanceSection(),
+            // SizedBox(height: 20),
+            // _buildStorageSection(),
+            // SizedBox(height: 20),
             _buildAboutSection(),
+            SizedBox(height: 20),
+            _buildDisclaimerSection(),
+            SizedBox(height: 60),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildServerSection() {
+  Widget _buildDisclaimerSection() {
     return Container(
       padding: EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -60,11 +64,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         children: [
           Row(
             children: [
-              Icon(Icons.cloud, color: Colors.blue),
+              Icon(Icons.gavel, color: Colors.redAccent),
               SizedBox(width: 12),
               Text(
-                'Server Settings',
-                style: TextStyle(
+                'Disclaimer',
+                style: GoogleFonts.cabin(
                   color: Colors.white,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -73,115 +77,155 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
           SizedBox(height: 20),
-
-          // Server URL
-          Container(
-            padding: EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.grey[700]!),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'API Server URL:',
-                  style: TextStyle(color: Colors.white70, fontSize: 14),
-                ),
-                SizedBox(height: 5),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'https://0nnf7qzl-5000.inc1.devtunnels.ms',
-                        style: TextStyle(color: Colors.blue, fontSize: 12),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => _copyToClipboard(
-                        'https://0nnf7qzl-5000.inc1.devtunnels.ms',
-                      ),
-                      icon: Icon(Icons.copy, color: Colors.grey, size: 18),
-                    ),
-                  ],
-                ),
-              ],
+          Text(
+            'This app does not host or store any video files. It simply finds and aggregates content that is already publicly available on the internet.',
+            style: GoogleFonts.cabin(
+              color: Colors.white70,
+              fontSize: 13,
+              height: 1.4,
             ),
           ),
-
-          SizedBox(height: 15),
-
-          // Connection Test
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: _isTestingConnection ? null : _testConnection,
-                  icon: _isTestingConnection
-                      ? SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.white,
-                            ),
-                          ),
-                        )
-                      : Icon(_getConnectionIcon(), size: 18),
-                  label: Text(
-                    _isTestingConnection ? 'Testing...' : 'Test Connection',
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _getConnectionColor(),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          if (_connectionStatus != null)
-            Container(
-              margin: EdgeInsets.only(top: 10),
-              padding: EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: _connectionStatus!
-                    ? Colors.green.withOpacity(0.2)
-                    : Colors.red.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: _connectionStatus! ? Colors.green : Colors.red,
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    _connectionStatus! ? Icons.check_circle : Icons.error,
-                    color: _connectionStatus! ? Colors.green : Colors.red,
-                    size: 18,
-                  ),
-                  SizedBox(width: 8),
-                  Text(
-                    _connectionStatus!
-                        ? 'Server is online'
-                        : 'Server is offline',
-                    style: TextStyle(
-                      color: _connectionStatus! ? Colors.green : Colors.red,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          SizedBox(height: 30),
         ],
       ),
     );
   }
+
+  // Widget _buildServerSection() {
+  //   return Container(
+  //     padding: EdgeInsets.all(20),
+  //     decoration: BoxDecoration(
+  //       color: Colors.grey[900],
+  //       borderRadius: BorderRadius.circular(15),
+  //       border: Border.all(color: Colors.grey[800]!),
+  //     ),
+  //     child: Column(
+  //       crossAxisAlignment: CrossAxisAlignment.start,
+  //       children: [
+  //         // Row(
+  //         //   children: [
+  //         //     Icon(Icons.cloud, color: Colors.blue),
+  //         //     SizedBox(width: 12),
+  //         //     Text(
+  //         //       'Server Settings',
+  //         //       style: TextStyle(
+  //         //         color: Colors.white,
+  //         //         fontSize: 18,
+  //         //         fontWeight: FontWeight.bold,
+  //         //       ),
+  //         //     ),
+  //         //   ],
+  //         // ),
+  //         // SizedBox(height: 20),
+
+  //         // // Server URL
+  //         // Container(
+  //         //   padding: EdgeInsets.all(12),
+  //         //   decoration: BoxDecoration(
+  //         //     color: Colors.black.withOpacity(0.5),
+  //         //     borderRadius: BorderRadius.circular(10),
+  //         //     border: Border.all(color: Colors.grey[700]!),
+  //         //   ),
+  //         //   child: Column(
+  //         //     crossAxisAlignment: CrossAxisAlignment.start,
+  //         //     children: [
+  //         //       Text(
+  //         //         'API Server URL:',
+  //         //         style: TextStyle(color: Colors.white70, fontSize: 14),
+  //         //       ),
+  //         //       SizedBox(height: 5),
+  //         //       Row(
+  //         //         children: [
+  //         //           Expanded(
+  //         //             child: Text(
+  //         //               'https://0nnf7qzl-5000.inc1.devtunnels.ms',
+  //         //               style: TextStyle(color: Colors.blue, fontSize: 12),
+  //         //             ),
+  //         //           ),
+  //         //           IconButton(
+  //         //             onPressed: () => _copyToClipboard(
+  //         //               'https://0nnf7qzl-5000.inc1.devtunnels.ms',
+  //         //             ),
+  //         //             icon: Icon(Icons.copy, color: Colors.grey, size: 18),
+  //         //           ),
+  //         //         ],
+  //         //       ),
+  //         //     ],
+  //         //   ),
+  //         // ),
+
+  //         SizedBox(height: 15),
+
+  //         // Connection Test
+  //         Row(
+  //           children: [
+  //             Expanded(
+  //               child: ElevatedButton.icon(
+  //                 onPressed: _isTestingConnection ? null : _testConnection,
+  //                 icon: _isTestingConnection
+  //                     ? SizedBox(
+  //                         width: 16,
+  //                         height: 16,
+  //                         child: CircularProgressIndicator(
+  //                           strokeWidth: 2,
+  //                           valueColor: AlwaysStoppedAnimation<Color>(
+  //                             Colors.white,
+  //                           ),
+  //                         ),
+  //                       )
+  //                     : Icon(_getConnectionIcon(), size: 18),
+  //                 label: Text(
+  //                   _isTestingConnection ? 'Testing...' : 'Test Connection',
+  //                 ),
+  //                 style: ElevatedButton.styleFrom(
+  //                   backgroundColor: _getConnectionColor(),
+  //                   foregroundColor: Colors.white,
+  //                   shape: RoundedRectangleBorder(
+  //                     borderRadius: BorderRadius.circular(10),
+  //                   ),
+  //                 ),
+  //               ),
+  //             ),
+  //           ],
+  //         ),
+
+  //         if (_connectionStatus != null)
+  //           Container(
+  //             margin: EdgeInsets.only(top: 10),
+  //             padding: EdgeInsets.all(10),
+  //             decoration: BoxDecoration(
+  //               color: _connectionStatus!
+  //                   ? Colors.green.withOpacity(0.2)
+  //                   : Colors.red.withOpacity(0.2),
+  //               borderRadius: BorderRadius.circular(8),
+  //               border: Border.all(
+  //                 color: _connectionStatus! ? Colors.green : Colors.red,
+  //               ),
+  //             ),
+  //             child: Row(
+  //               children: [
+  //                 Icon(
+  //                   _connectionStatus! ? Icons.check_circle : Icons.error,
+  //                   color: _connectionStatus! ? Colors.green : Colors.red,
+  //                   size: 18,
+  //                 ),
+  //                 SizedBox(width: 8),
+  //                 Text(
+  //                   _connectionStatus!
+  //                       ? 'Server is online'
+  //                       : 'Server is offline',
+  //                   style: TextStyle(
+  //                     color: _connectionStatus! ? Colors.green : Colors.red,
+  //                     fontSize: 14,
+  //                   ),
+  //                 ),
+  //               ],
+  //             ),
+  //           ),
+  //       ],
+  //     ),
+  //   );
+  // }
 
   Widget _buildStreamingSection() {
     return Container(
@@ -245,123 +289,123 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildAppearanceSection() {
-    return Container(
-      padding: EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.grey[900],
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.grey[800]!),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.palette, color: Colors.purple),
-              SizedBox(width: 12),
-              Text(
-                'Appearance',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 20),
+  // Widget _buildAppearanceSection() {
+  //   return Container(
+  //     padding: EdgeInsets.all(20),
+  //     decoration: BoxDecoration(
+  //       color: Colors.grey[900],
+  //       borderRadius: BorderRadius.circular(15),
+  //       border: Border.all(color: Colors.grey[800]!),
+  //     ),
+  //     child: Column(
+  //       crossAxisAlignment: CrossAxisAlignment.start,
+  //       children: [
+  //         Row(
+  //           children: [
+  //             Icon(Icons.palette, color: Colors.purple),
+  //             SizedBox(width: 12),
+  //             Text(
+  //               'Appearance',
+  //               style: TextStyle(
+  //                 color: Colors.white,
+  //                 fontSize: 18,
+  //                 fontWeight: FontWeight.bold,
+  //               ),
+  //             ),
+  //           ],
+  //         ),
+  //         SizedBox(height: 20),
 
-          _buildSwitchSetting(
-            'Dark Theme',
-            'Use dark theme throughout the app',
-            _darkTheme,
-            (value) => setState(() => _darkTheme = value),
-            Icons.dark_mode,
-          ),
-        ],
-      ),
-    );
-  }
+  //         _buildSwitchSetting(
+  //           'Dark Theme',
+  //           'Use dark theme throughout the app',
+  //           _darkTheme,
+  //           (value) => setState(() => _darkTheme = value),
+  //           Icons.dark_mode,
+  //         ),
+  //       ],
+  //     ),
+  //   );
+  // }
 
-  Widget _buildStorageSection() {
-    return Container(
-      padding: EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.grey[900],
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.grey[800]!),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.storage, color: Colors.orange),
-              SizedBox(width: 12),
-              Text(
-                'Storage',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 20),
+  // Widget _buildStorageSection() {
+  //   return Container(
+  //     padding: EdgeInsets.all(20),
+  //     decoration: BoxDecoration(
+  //       color: Colors.grey[900],
+  //       borderRadius: BorderRadius.circular(15),
+  //       border: Border.all(color: Colors.grey[800]!),
+  //     ),
+  //     child: Column(
+  //       crossAxisAlignment: CrossAxisAlignment.start,
+  //       children: [
+  //         Row(
+  //           children: [
+  //             Icon(Icons.storage, color: Colors.orange),
+  //             SizedBox(width: 12),
+  //             Text(
+  //               'Storage',
+  //               style: TextStyle(
+  //                 color: Colors.white,
+  //                 fontSize: 18,
+  //                 fontWeight: FontWeight.bold,
+  //               ),
+  //             ),
+  //           ],
+  //         ),
+  //         SizedBox(height: 20),
 
-          // Saved movies count
-          Container(
-            padding: EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.bookmark, color: Colors.orange, size: 20),
-                SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Saved Movies',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      Text(
-                        '${SavedScreen.getSavedMoviesCount()} movies saved',
-                        style: TextStyle(color: Colors.grey[400], fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+  //         // Saved movies count
+  //         Container(
+  //           padding: EdgeInsets.all(12),
+  //           decoration: BoxDecoration(
+  //             color: Colors.black.withOpacity(0.5),
+  //             borderRadius: BorderRadius.circular(10),
+  //           ),
+  //           child: Row(
+  //             children: [
+  //               Icon(Icons.bookmark, color: Colors.orange, size: 20),
+  //               SizedBox(width: 10),
+  //               Expanded(
+  //                 child: Column(
+  //                   crossAxisAlignment: CrossAxisAlignment.start,
+  //                   children: [
+  //                     Text(
+  //                       'Saved Movies',
+  //                       style: TextStyle(
+  //                         color: Colors.white,
+  //                         fontWeight: FontWeight.w500,
+  //                       ),
+  //                     ),
+  //                     Text(
+  //                       '${SavedScreen.getSavedMoviesCount()} movies saved',
+  //                       style: TextStyle(color: Colors.grey[400], fontSize: 12),
+  //                     ),
+  //                   ],
+  //                 ),
+  //               ),
+  //             ],
+  //           ),
+  //         ),
 
-          SizedBox(height: 15),
+  //         SizedBox(height: 15),
 
-          ElevatedButton.icon(
-            onPressed: _showClearDataDialog,
-            icon: Icon(Icons.delete_sweep, size: 18),
-            label: Text('Clear All Data'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.withOpacity(0.8),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  //         ElevatedButton.icon(
+  //           onPressed: _showClearDataDialog,
+  //           icon: Icon(Icons.delete_sweep, size: 18),
+  //           label: Text('Clear All Data'),
+  //           style: ElevatedButton.styleFrom(
+  //             backgroundColor: Colors.red.withOpacity(0.8),
+  //             foregroundColor: Colors.white,
+  //             shape: RoundedRectangleBorder(
+  //               borderRadius: BorderRadius.circular(10),
+  //             ),
+  //           ),
+  //         ),
+  //       ],
+  //     ),
+  //   );
+  // }
 
   Widget _buildAboutSection() {
     return Container(
@@ -380,7 +424,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               SizedBox(width: 12),
               Text(
                 'About',
-                style: TextStyle(
+                style: GoogleFonts.cabin(
                   color: Colors.white,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -402,7 +446,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: ElevatedButton.icon(
                   onPressed: _showLicenses,
                   icon: Icon(Icons.description, size: 18),
-                  label: Text('Licenses'),
+                  label: Text(
+                    'Licenses',
+                    style: GoogleFonts.cabin(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green.withOpacity(0.8),
                     foregroundColor: Colors.white,

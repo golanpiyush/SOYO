@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:soyo/Screens/moviechatscreen.dart';
 import 'package:soyo/Screens/playerScreen.dart';
 import 'package:soyo/Screens/movieDetailScreen.dart';
 import 'package:soyo/Services/m3u8api.dart';
@@ -138,13 +139,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _collections[name] = [];
       }
 
-      await for (final movie in _collectionsApi.getCollectionMoviesStream(
-        type,
-      )) {
-        setState(() {
-          _collections[name]!.add(movie);
-        });
-      }
+      // // await for (final movie in _collectionsApi.getCollectionMoviesStream(
+      //   type,
+      // )) {
+      //   setState(() {
+      //     _collections[name]!.add(movie);
+      //   });
+      // }
 
       // Mark as fully loaded
       setState(() {
@@ -199,65 +200,102 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildAnimatedAppBar() {
-    return FadeTransition(
-      opacity: _fadeAnimation,
-      child: SlideTransition(
-        position: _slideAnimation,
-        child: Container(
-          padding: EdgeInsets.fromLTRB(20, 20, 20, 10),
-          child: Row(
-            children: [
-              Container(
-                padding: EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.red.withOpacity(0.3),
-                      Colors.purple.withOpacity(0.3),
-                    ],
+    return GestureDetector(
+      onTap: _navigateToMovieChat,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: SlideTransition(
+            position: _slideAnimation,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.red.withOpacity(0.3),
+                          Colors.purple.withOpacity(0.3),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.1),
+                        width: 1,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.home,
+                      color: Colors.white,
+                      size: 24,
+                    ),
                   ),
-                  borderRadius: BorderRadius.circular(15),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.1),
-                    width: 1,
-                  ),
-                ),
-                child: Icon(Icons.home, color: Colors.white, size: 24),
-              ),
-              SizedBox(width: 15),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ShaderMask(
-                      shaderCallback: (bounds) => LinearGradient(
-                        colors: [Colors.white, Colors.red.shade300],
-                      ).createShader(bounds),
-                      child: Text(
-                        'S-O-Y-O',
-                        style: GoogleFonts.nunito(
-                          fontSize: 32,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: -0.5,
+                  const SizedBox(width: 15),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ShaderMask(
+                          shaderCallback: (bounds) => const LinearGradient(
+                            colors: [Colors.white, Colors.red],
+                          ).createShader(bounds),
+                          child: Text(
+                            'S-O-Y-O',
+                            style: GoogleFonts.nunito(
+                              fontSize: 32,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
                         ),
-                      ),
+                        Text(
+                          '~ Stream On Your Own',
+                          style: GoogleFonts.caveat(
+                            fontSize: 17,
+                            color: Colors.white.withOpacity(0.7),
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ],
                     ),
-                    Text(
-                      '~ Stream On Your Own',
-                      style: GoogleFonts.caveat(
-                        fontSize: 17,
-                        color: Colors.white.withOpacity(0.7),
-                        fontWeight: FontWeight.w400,
-                        // letterSpacing: 2,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                  const Icon(
+                    Icons.arrow_forward_ios,
+                    color: Colors.white70,
+                    size: 20,
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _navigateToMovieChat() {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const MovieChatScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(0.0, 1.0);
+          const end = Offset.zero;
+          const curve = Curves.easeInOut;
+
+          var tween = Tween(
+            begin: begin,
+            end: end,
+          ).chain(CurveTween(curve: curve));
+          var offsetAnimation = animation.drive(tween);
+
+          return SlideTransition(position: offsetAnimation, child: child);
+        },
+        transitionDuration: const Duration(milliseconds: 500),
       ),
     );
   }
@@ -274,8 +312,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 controller: _movieController,
                 style: TextStyle(color: Colors.white),
                 decoration: InputDecoration(
-                  hintText: 'Search movies...',
-                  hintStyle: TextStyle(color: Colors.white60),
+                  hintText: 'Search movies or tv shows...',
+                  hintStyle: GoogleFonts.cabin(color: Colors.white60),
                   filled: true,
                   fillColor: Colors.black.withOpacity(0.4),
                   border: OutlineInputBorder(

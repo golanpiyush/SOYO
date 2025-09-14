@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:soyo/Screens/ExploreShows.dart';
+import 'package:soyo/Screens/genre_movies.dart';
 import 'package:soyo/Screens/movieDetailscreen.dart';
 import 'package:soyo/Screens/playerScreen.dart';
 import 'package:soyo/Services/exploreapi.dart';
@@ -14,6 +15,7 @@ class ExploreScreen extends StatefulWidget {
 
 class _ExploreScreenState extends State<ExploreScreen>
     with TickerProviderStateMixin {
+  List<Movie> upcomingMovies = [];
   List<Movie> popularMovies = [];
   List<Movie> topRatedMovies = [];
   List<Movie> horrorMovies = [];
@@ -26,6 +28,15 @@ class _ExploreScreenState extends State<ExploreScreen>
   List<Movie> crimeMovies = [];
   List<Movie> animationMovies = [];
   List<Movie> adventureMovies = [];
+  List<Movie> dramaMovies = [];
+  List<Movie> fantasyMovies = [];
+  List<Movie> romanceMovies = [];
+  List<Movie> familyMovies = [];
+  List<Movie> documentaryMovies = [];
+  List<Movie> historyMovies = [];
+  List<Movie> warMovies = [];
+  List<Movie> westernMovies = [];
+  List<Movie> musicMovies = [];
   bool isLoading = true;
   String errorMessage = '';
   bool _isSearching = false;
@@ -103,68 +114,121 @@ class _ExploreScreenState extends State<ExploreScreen>
         isLoading = true;
       });
 
-      // Fetch all data in parallel
+      // Fetch all data in parallel - add new genres to the list
       final results = await Future.wait([
-        ExploreApi.getPopularMovies(),
-        ExploreApi.getTopRatedMovies(),
-        ExploreApi.getMoviesByGenre(27), // Horror
-        ExploreApi.getMoviesByGenre(28), // Action
-        ExploreApi.getMoviesByGenre(878), // Sci-Fi
-        ExploreApi.getMoviesByGenre(35), // Comedy
-        ExploreApi.getMoviesByGenre(53), // Thriller
-        ExploreApi.getMoviesByGenre(10770), // TV Movie
-        ExploreApi.getMoviesByGenre(9648), // Mystery
-        ExploreApi.getMoviesByGenre(80), // Crime
-        ExploreApi.getMoviesByGenre(16), // Animation
-        ExploreApi.getMoviesByGenre(12), // Adventure
+        ExploreApi.getUpcomingMovies(), // results[0]
+        ExploreApi.getPopularMovies(), // results[1]
+        ExploreApi.getTopRatedMovies(), // results[2]
+        ExploreApi.getMoviesByGenre(27), // results[3] - Horror
+        ExploreApi.getMoviesByGenre(28), // results[4] - Action
+        ExploreApi.getMoviesByGenre(878), // results[5] - Sci-Fi
+        ExploreApi.getMoviesByGenre(35), // results[6] - Comedy
+        ExploreApi.getMoviesByGenre(53), // results[7] - Thriller
+        ExploreApi.getMoviesByGenre(10770), // results[8] - TV Movie
+        ExploreApi.getMoviesByGenre(9648), // results[9] - Mystery
+        ExploreApi.getMoviesByGenre(80), // results[10] - Crime
+        ExploreApi.getMoviesByGenre(16), // results[11] - Animation
+        ExploreApi.getMoviesByGenre(12), // results[12] - Adventure
+        // Add new genres here:
+        ExploreApi.getMoviesByGenre(18), // results[13] - Drama
+        ExploreApi.getMoviesByGenre(14), // results[14] - Fantasy
+        ExploreApi.getMoviesByGenre(10749), // results[15] - Romance
+        ExploreApi.getMoviesByGenre(10751), // results[16] - Family
+        ExploreApi.getMoviesByGenre(99), // results[17] - Documentary
+        ExploreApi.getMoviesByGenre(36), // results[18] - History
+        ExploreApi.getMoviesByGenre(10752), // results[19] - War
+        ExploreApi.getMoviesByGenre(37), // results[20] - Western
+        ExploreApi.getMoviesByGenre(10402), // results[21] - Music
       ]);
 
       setState(() {
-        popularMovies = (results[0]['results'] as List)
+        // Fix the index assignments to match the Future.wait order
+        upcomingMovies = (results[0]['results'] as List)
             .map((movie) => Movie.fromJson(movie))
             .toList();
 
-        topRatedMovies = (results[1]['results'] as List)
+        popularMovies = (results[1]['results'] as List)
             .map((movie) => Movie.fromJson(movie))
             .toList();
 
-        horrorMovies = (results[2]['results'] as List)
+        topRatedMovies = (results[2]['results'] as List)
             .map((movie) => Movie.fromJson(movie))
             .toList();
 
-        actionMovies = (results[3]['results'] as List)
+        horrorMovies = (results[3]['results'] as List)
             .map((movie) => Movie.fromJson(movie))
             .toList();
 
-        scifiMovies = (results[4]['results'] as List)
+        actionMovies = (results[4]['results'] as List)
             .map((movie) => Movie.fromJson(movie))
             .toList();
 
-        comedyMovies = (results[5]['results'] as List)
+        scifiMovies = (results[5]['results'] as List)
             .map((movie) => Movie.fromJson(movie))
             .toList();
 
-        thrillerMovies = (results[6]['results'] as List)
+        comedyMovies = (results[6]['results'] as List)
             .map((movie) => Movie.fromJson(movie))
             .toList();
 
-        tvMovieMovies = (results[7]['results'] as List)
+        thrillerMovies = (results[7]['results'] as List)
             .map((movie) => Movie.fromJson(movie))
             .toList();
 
-        mysteryMovies = (results[8]['results'] as List)
+        tvMovieMovies = (results[8]['results'] as List)
             .map((movie) => Movie.fromJson(movie))
             .toList();
 
-        crimeMovies = (results[9]['results'] as List)
+        mysteryMovies = (results[9]['results'] as List)
             .map((movie) => Movie.fromJson(movie))
             .toList();
 
-        animationMovies = (results[10]['results'] as List)
+        crimeMovies = (results[10]['results'] as List)
             .map((movie) => Movie.fromJson(movie))
             .toList();
 
-        adventureMovies = (results[11]['results'] as List)
+        animationMovies = (results[11]['results'] as List)
+            .map((movie) => Movie.fromJson(movie))
+            .toList();
+
+        adventureMovies = (results[12]['results'] as List)
+            .map((movie) => Movie.fromJson(movie))
+            .toList();
+
+        // Add new genres mapping here with correct indices:
+        dramaMovies = (results[13]['results'] as List)
+            .map((movie) => Movie.fromJson(movie))
+            .toList();
+
+        fantasyMovies = (results[14]['results'] as List)
+            .map((movie) => Movie.fromJson(movie))
+            .toList();
+
+        romanceMovies = (results[15]['results'] as List)
+            .map((movie) => Movie.fromJson(movie))
+            .toList();
+
+        familyMovies = (results[16]['results'] as List)
+            .map((movie) => Movie.fromJson(movie))
+            .toList();
+
+        documentaryMovies = (results[17]['results'] as List)
+            .map((movie) => Movie.fromJson(movie))
+            .toList();
+
+        historyMovies = (results[18]['results'] as List)
+            .map((movie) => Movie.fromJson(movie))
+            .toList();
+
+        warMovies = (results[19]['results'] as List)
+            .map((movie) => Movie.fromJson(movie))
+            .toList();
+
+        westernMovies = (results[20]['results'] as List)
+            .map((movie) => Movie.fromJson(movie))
+            .toList();
+
+        musicMovies = (results[21]['results'] as List)
             .map((movie) => Movie.fromJson(movie))
             .toList();
 
@@ -177,10 +241,53 @@ class _ExploreScreenState extends State<ExploreScreen>
       _scaleController.forward();
     } catch (e) {
       setState(() {
-        errorMessage = 'Failed to load data: $e';
+        errorMessage =
+            'Failed to load data: ⚠️ API ERROR DETECTED! Contact Developer...';
         isLoading = false;
       });
     }
+  }
+
+  void _onGenreSectionTap(String title, List<Color> gradientColors) {
+    // Map the genre name to its ID
+    final genreIds = {
+      'Upcoming': -1,
+      'Popular': 0, // Special case for popular
+      'Top Rated': 1, // Special case for top rated
+      'Horror': 27,
+      'Action': 28,
+      'Sci-Fi': 878,
+      'Comedy': 35,
+      'Thriller': 53,
+      'TV Movies': 10770,
+      'Mystery': 9648,
+      'Crime': 80,
+      'Animation': 16,
+      'Adventure': 12,
+      // Add new genres here:
+      'Drama': 18,
+      'Fantasy': 14,
+      'Romance': 10749,
+      'Family': 10751,
+      'Documentary': 99,
+      'History': 36,
+      'War': 10752,
+      'Western': 37,
+      'Music': 10402,
+    };
+
+    final genreId = genreIds[title] ?? 28; // Default to Action if not found
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => GenreMoviesScreen(
+          genreName: title,
+          genreId: genreId,
+          gradientColors: gradientColors,
+        ),
+      ),
+    );
   }
 
   @override
@@ -449,9 +556,14 @@ class _ExploreScreenState extends State<ExploreScreen>
   Widget _buildContent() {
     final sections = [
       {
+        'title': 'Upcoming',
+        'movies': upcomingMovies,
+        'gradient': [const Color.fromARGB(255, 33, 47, 243), Colors.purple],
+      },
+      {
         'title': 'Popular',
         'movies': popularMovies,
-        'gradient': [Colors.red, Colors.pink],
+        'gradient': [const Color.fromARGB(255, 54, 200, 244), Colors.pink],
       },
       {
         'title': 'Top Rated',
@@ -508,6 +620,52 @@ class _ExploreScreenState extends State<ExploreScreen>
         'movies': adventureMovies,
         'gradient': [Colors.teal, Colors.green],
       },
+      // Add new genres here:
+      {
+        'title': 'Drama',
+        'movies': dramaMovies,
+        'gradient': [Colors.blueGrey, Colors.grey],
+      },
+      {
+        'title': 'Fantasy',
+        'movies': fantasyMovies,
+        'gradient': [Colors.purpleAccent, Colors.deepPurple],
+      },
+      {
+        'title': 'Romance',
+        'movies': romanceMovies,
+        'gradient': [Colors.pinkAccent, Colors.redAccent],
+      },
+      {
+        'title': 'Family',
+        'movies': familyMovies,
+        'gradient': [Colors.cyan, Colors.blue],
+      },
+      {
+        'title': 'Documentary',
+        'movies': documentaryMovies,
+        'gradient': [Colors.brown, Colors.grey],
+      },
+      {
+        'title': 'History',
+        'movies': historyMovies,
+        'gradient': [Colors.amber, Colors.orange],
+      },
+      {
+        'title': 'War',
+        'movies': warMovies,
+        'gradient': [Colors.red, Colors.red.shade900],
+      },
+      {
+        'title': 'Western',
+        'movies': westernMovies,
+        'gradient': [Colors.orange, Colors.brown],
+      },
+      {
+        'title': 'Music',
+        'movies': musicMovies,
+        'gradient': [Colors.purple, Colors.blue],
+      },
     ];
 
     return FadeTransition(
@@ -529,7 +687,7 @@ class _ExploreScreenState extends State<ExploreScreen>
                   return Transform.translate(
                     offset: Offset(0, 50 * (1 - value)),
                     child: Opacity(
-                      opacity: value,
+                      opacity: value.clamp(0.0, 1.0),
                       child: _buildSection(
                         section['title'],
                         section['movies'],
@@ -551,93 +709,96 @@ class _ExploreScreenState extends State<ExploreScreen>
     List<Movie> movies,
     List<Color> gradientColors,
   ) {
-    return Container(
-      margin: EdgeInsets.only(bottom: 30),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                Container(
-                  width: 4,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: gradientColors,
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
+    return GestureDetector(
+      onTap: () => _onGenreSectionTap(title, gradientColors),
+      child: Container(
+        margin: EdgeInsets.only(bottom: 30),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  Container(
+                    width: 4,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: gradientColors,
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
+                      borderRadius: BorderRadius.circular(2),
                     ),
-                    borderRadius: BorderRadius.circular(2),
                   ),
-                ),
-                SizedBox(width: 12),
-                Expanded(
-                  child: ShaderMask(
-                    shaderCallback: (bounds) => LinearGradient(
-                      colors: [
-                        Colors.white,
-                        gradientColors[0].withOpacity(0.8),
-                      ],
-                    ).createShader(bounds),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: ShaderMask(
+                      shaderCallback: (bounds) => LinearGradient(
+                        colors: [
+                          Colors.white,
+                          gradientColors[0].withOpacity(0.8),
+                        ],
+                      ).createShader(bounds),
+                      child: Text(
+                        title,
+                        style: GoogleFonts.nunito(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: gradientColors),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                     child: Text(
-                      title,
+                      '${movies.length}',
                       style: GoogleFonts.nunito(
                         color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.5,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
-                ),
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: gradientColors),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '${movies.length}',
-                    style: GoogleFonts.nunito(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          SizedBox(height: 15),
-          Container(
-            height: 250,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              physics: BouncingScrollPhysics(),
-              itemCount: movies.length,
-              itemBuilder: (context, index) {
-                return TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0.0, end: 1.0),
-                  duration: Duration(milliseconds: 300 + (index * 50)),
-                  curve: Curves.elasticOut,
-                  builder: (context, value, child) {
-                    return Transform.scale(
-                      scale: 0.8 + (0.2 * value),
-                      child: _buildMovieCard(
-                        movies[index],
-                        index,
-                        movies.length,
-                        gradientColors,
-                      ),
-                    );
-                  },
-                );
-              },
+            SizedBox(height: 15),
+            Container(
+              height: 250,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                physics: BouncingScrollPhysics(),
+                itemCount: movies.length,
+                itemBuilder: (context, index) {
+                  return TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    duration: Duration(milliseconds: 300 + (index * 50)),
+                    curve: Curves.elasticOut,
+                    builder: (context, value, child) {
+                      return Transform.scale(
+                        scale: 0.8 + (0.2 * value),
+                        child: _buildMovieCard(
+                          movies[index],
+                          index,
+                          movies.length,
+                          gradientColors,
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

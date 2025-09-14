@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:soyo/Screens/provider_shows.dart';
+import 'package:soyo/Screens/showDetails.dart';
 import 'package:soyo/Services/exploretvapi.dart';
 import 'package:soyo/models/tvshowsmodel.dart';
 
@@ -145,6 +147,38 @@ class _ExploreShowsState extends State<ExploreShows>
         isLoading = false;
       });
     }
+  }
+
+  void _onProviderSectionTap(
+    String title,
+    List<Color> gradientColors,
+    IconData icon,
+  ) {
+    // Map the provider name to its ID
+    final providerIds = {
+      'Netflix': 8,
+      'Apple TV': 350,
+      'Prime Video': 9,
+      'Disney+': 337,
+      'HBO Max': 1899,
+      'Hulu': 15,
+      'Paramount+': 531,
+    };
+
+    final providerId =
+        providerIds[title] ?? 8; // Default to Netflix if not found
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ProviderShowsScreen(
+          providerName: title,
+          providerId: providerId,
+          gradientColors: gradientColors,
+          icon: icon,
+        ),
+      ),
+    );
   }
 
   @override
@@ -466,10 +500,13 @@ class _ExploreShowsState extends State<ExploreShows>
                 duration: Duration(milliseconds: 300 + (index * 100)),
                 curve: Curves.easeOutBack,
                 builder: (context, value, child) {
+                  // Clamp the value to ensure it's within valid range
+                  final clampedValue = value.clamp(0.0, 1.0);
+
                   return Transform.translate(
-                    offset: Offset(0, 50 * (1 - value)),
+                    offset: Offset(0, 50 * (1 - clampedValue)),
                     child: Opacity(
-                      opacity: value,
+                      opacity: clampedValue,
                       child: _buildSection(
                         section['title'],
                         section['shows'],
@@ -493,89 +530,92 @@ class _ExploreShowsState extends State<ExploreShows>
     List<Color> gradientColors,
     IconData icon,
   ) {
-    return Container(
-      margin: EdgeInsets.only(bottom: 30),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                Container(
-                  padding: EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: gradientColors),
-                    borderRadius: BorderRadius.circular(12),
+    return GestureDetector(
+      onTap: () => _onProviderSectionTap(title, gradientColors, icon),
+      child: Container(
+        margin: EdgeInsets.only(bottom: 30),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: gradientColors),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(icon, color: Colors.white, size: 18),
                   ),
-                  child: Icon(icon, color: Colors.white, size: 18),
-                ),
-                SizedBox(width: 12),
-                Expanded(
-                  child: ShaderMask(
-                    shaderCallback: (bounds) => LinearGradient(
-                      colors: [
-                        Colors.white,
-                        gradientColors[0].withOpacity(0.8),
-                      ],
-                    ).createShader(bounds),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: ShaderMask(
+                      shaderCallback: (bounds) => LinearGradient(
+                        colors: [
+                          Colors.white,
+                          gradientColors[0].withOpacity(0.8),
+                        ],
+                      ).createShader(bounds),
+                      child: Text(
+                        title,
+                        style: GoogleFonts.nunito(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: gradientColors),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                     child: Text(
-                      title,
+                      '${shows.length}',
                       style: GoogleFonts.nunito(
                         color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.5,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
-                ),
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: gradientColors),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '${shows.length}',
-                    style: GoogleFonts.nunito(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          SizedBox(height: 15),
-          Container(
-            height: 250,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              physics: BouncingScrollPhysics(),
-              itemCount: shows.length,
-              itemBuilder: (context, index) {
-                return TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0.0, end: 1.0),
-                  duration: Duration(milliseconds: 300 + (index * 50)),
-                  curve: Curves.elasticOut,
-                  builder: (context, value, child) {
-                    return Transform.scale(
-                      scale: 0.8 + (0.2 * value),
-                      child: _buildShowCard(
-                        shows[index],
-                        index,
-                        shows.length,
-                        gradientColors,
-                      ),
-                    );
-                  },
-                );
-              },
+            SizedBox(height: 15),
+            Container(
+              height: 250,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                physics: BouncingScrollPhysics(),
+                itemCount: shows.length,
+                itemBuilder: (context, index) {
+                  return TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    duration: Duration(milliseconds: 300 + (index * 50)),
+                    curve: Curves.elasticOut,
+                    builder: (context, value, child) {
+                      return Transform.scale(
+                        scale: 0.8 + (0.2 * value),
+                        child: _buildShowCard(
+                          shows[index],
+                          index,
+                          shows.length,
+                          gradientColors,
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -744,13 +784,10 @@ class _ExploreShowsState extends State<ExploreShows>
   }
 
   void _onShowCardTap(TvShow show) {
-    // Navigate to show detail screen or handle tap
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Tapped on ${show.name}'),
-        backgroundColor: Colors.blue,
-        duration: Duration(seconds: 1),
-      ),
+    // Navigate to show detail screen
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => ShowDetailScreen(show: show)),
     );
   }
 }

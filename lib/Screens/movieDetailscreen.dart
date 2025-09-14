@@ -1,12 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:soyo/Services/downloadManager.dart';
 import 'package:soyo/Services/exploreapi.dart';
 import 'package:soyo/Services/m3u8api.dart';
 import 'package:soyo/Screens/playerScreen.dart';
 import 'package:soyo/models/moviemodel.dart';
+import 'package:soyo/models/savedmoviesmodel.dart';
 
 import 'package:video_player/video_player.dart';
 
@@ -20,7 +23,7 @@ class MovieDetailScreen extends StatefulWidget {
 }
 
 class _MovieDetailScreenState extends State<MovieDetailScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final M3U8Api _api = M3U8Api();
   bool _isFetching = false;
   Map<String, dynamic>? _streamResult;
@@ -30,6 +33,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   late Animation<double> _fadeAnimation;
   Map<String, dynamic>? _movieDetails;
   bool _isLoadingDetails = false;
+
+  bool _isSaved = false;
+  late AnimationController _saveAnimationController;
+  late Animation<double> _saveAnimation;
 
   // Trailer-related variables
   late VideoPlayerController _trailerController;
@@ -41,6 +48,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   Timer? _trailerTimer;
   bool _isTrailerBuffered = false;
   double _bufferedPercentage = 0.0;
+
+  final DownloadManager _downloadManager = DownloadManager();
+  bool _isDownloading = false;
+  bool _isDownloaded = false;
+  String? _downloadId;
 
   @override
   void initState() {
@@ -55,7 +67,18 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     _animationController.forward();
     _loadWatchProgress();
     _loadMovieDetails();
-
+    _checkDownloadStatus();
+    _saveAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _saveAnimation = Tween<double>(begin: 1.0, end: 1.2).animate(
+      CurvedAnimation(
+        parent: _saveAnimationController,
+        curve: Curves.elasticOut,
+      ),
+    );
+    _checkIfSaved();
     // Initialize trailer controller with a dummy URL
     _trailerController = VideoPlayerController.network(
       'https://example.com/dummy.mp4',
@@ -67,7 +90,178 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     _animationController.dispose();
     _trailerController.dispose();
     _trailerTimer?.cancel();
+    _saveAnimationController.dispose();
     super.dispose();
+  }
+
+  // Add this method to check download status
+  void _checkDownloadStatus() {
+    final downloadItem = _downloadManager.getDownloadForMovie(
+      widget.movie.title,
+    );
+    if (downloadItem != null) {
+      setState(() {
+        _downloadId = downloadItem.id;
+        _isDownloaded = downloadItem.status == DownloadStatus.completed;
+        _isDownloading =
+            downloadItem.status == DownloadStatus.downloading ||
+            downloadItem.status == DownloadStatus.pending;
+      });
+    }
+  }
+
+  Future<void> _checkIfSaved() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedMoviesJson = prefs.getStringList('saved_movies') ?? [];
+
+      final isAlreadySaved = savedMoviesJson.any((json) {
+        final movie = jsonDecode(json);
+        return movie['id'] == widget.movie.id.toString();
+      });
+
+      setState(() {
+        _isSaved = isAlreadySaved;
+      });
+    } catch (e) {
+      print('Error checking saved status: $e');
+    }
+  }
+
+  Future<void> _toggleSaveMovie() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedMoviesJson = prefs.getStringList('saved_movies') ?? [];
+
+      if (_isSaved) {
+        // Remove from saved
+        savedMoviesJson.removeWhere((json) {
+          final movie = jsonDecode(json);
+          return movie['id'] == widget.movie.id.toString();
+        });
+
+        await prefs.setStringList('saved_movies', savedMoviesJson);
+
+        setState(() {
+          _isSaved = false;
+        });
+
+        _showSuccessSnackBar('Movie removed from saved list');
+      } else {
+        // Add to saved
+        final savedMovie = _createSavedMovie();
+        savedMoviesJson.add(jsonEncode(savedMovie.toJson()));
+
+        await prefs.setStringList('saved_movies', savedMoviesJson);
+
+        setState(() {
+          _isSaved = true;
+        });
+
+        // Play save animation
+        _saveAnimationController.forward().then((_) {
+          _saveAnimationController.reverse();
+        });
+
+        _showSuccessSnackBar('Movie saved successfully!');
+      }
+    } catch (e) {
+      _showErrorSnackBar('Failed to save movie: $e');
+    }
+  }
+
+  SavedMovie _createSavedMovie() {
+    // Extract cast names from movie details
+    List<String> castNames = [];
+    if (_movieDetails != null && _movieDetails!['credits'] != null) {
+      final cast = List<Map<String, dynamic>>.from(
+        _movieDetails!['credits']['cast'] ?? [],
+      );
+      castNames = cast
+          .take(10)
+          .map((person) => person['name'] as String? ?? '')
+          .toList(); // ✅ Now it's List<String>
+    }
+
+    // Extract crew info from movie details
+    Map<String, List<String>> crewInfo = {};
+    if (_movieDetails != null && _movieDetails!['credits'] != null) {
+      final crew = List<Map<String, dynamic>>.from(
+        _movieDetails!['credits']['crew'] ?? [],
+      );
+
+      for (final person in crew) {
+        final job = person['job'] ?? 'Unknown';
+        final name = person['name'] ?? '';
+        if (name.isNotEmpty) {
+          if (!crewInfo.containsKey(job)) {
+            crewInfo[job] = [];
+          }
+          crewInfo[job]!.add(name);
+        }
+      }
+    }
+
+    return SavedMovie(
+      id: widget.movie.id.toString(),
+      title: widget.movie.title,
+      overview: widget.movie.overview,
+      posterUrl: widget.movie.posterUrl,
+      backdropUrl: widget.movie.backdropUrlLarge,
+      releaseDate: widget.movie.releaseDate,
+      voteAverage: widget.movie.voteAverage,
+      cast: castNames,
+      crew: crewInfo,
+      savedAt: DateTime.now(),
+    );
+  }
+
+  // Add this method to fetch stream for download
+  Future<void> _fetchStreamForDownload() async {
+    setState(() {
+      _isFetching = true;
+    });
+
+    try {
+      final result = await _api.searchMovie(
+        movieName: widget.movie.title,
+        quality: '1080',
+        fetchSubs: true,
+      );
+
+      setState(() {
+        _streamResult = result;
+        _isFetching = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isFetching = false;
+      });
+      throw e;
+    }
+  }
+
+  // Add this method for success snackbar
+  void _showSuccessSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                message,
+                style: GoogleFonts.nunito(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.green.shade700,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
   }
 
   Future<void> _loadWatchProgress() async {
@@ -129,6 +323,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             subtitleUrls: result['subtitles'] != null
                 ? List<String>.from(result['subtitles'])
                 : null,
+            isTvShow: false,
           ),
         ),
       );
@@ -544,49 +739,139 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   }
 
   Widget _buildPlayButton() {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      child: ElevatedButton.icon(
-        onPressed: _isFetching ? null : _fetchStream,
-        icon: _isFetching
-            ? SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+    return Column(
+      children: [
+        // Main action buttons row
+        Row(
+          children: [
+            // Play button (expanded to take most space)
+            Expanded(
+              flex: 3,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                child: ElevatedButton.icon(
+                  onPressed: _isFetching ? null : _fetchStream,
+                  icon: _isFetching
+                      ? SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                          ),
+                        )
+                      : Icon(
+                          _hasWatchProgress
+                              ? Icons.queue_play_next_outlined
+                              : Icons.play_arrow,
+                          size: 24,
+                        ),
+                  label: Text(
+                    _isFetching
+                        ? 'Finding Stream...'
+                        : _hasWatchProgress
+                        ? 'Continue Watching'
+                        : 'Play Movie',
+                    style: GoogleFonts.nunito(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _hasWatchProgress
+                        ? const Color.fromARGB(255, 9, 255, 0)
+                        : const Color.fromARGB(255, 73, 54, 244),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 16,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 8,
+                    shadowColor:
+                        (_hasWatchProgress
+                                ? Colors.orange
+                                : const Color.fromARGB(255, 54, 184, 244))
+                            .withOpacity(0.3),
+                  ),
                 ),
-              )
-            : Icon(
-                _hasWatchProgress ? Icons.play_circle_filled : Icons.play_arrow,
-                size: 24,
               ),
-        label: Text(
-          _isFetching
-              ? 'Loading Stream...'
-              : _hasWatchProgress
-              ? 'Continue Watching'
-              : 'Play Movie',
-          style: GoogleFonts.nunito(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+
+            const SizedBox(width: 12),
+
+            // Save button
+            ScaleTransition(
+              scale: _saveAnimation,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: _isSaved
+                      ? Colors.red.withOpacity(0.1)
+                      : Colors.grey.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: _isSaved
+                        ? Colors.red.withOpacity(0.3)
+                        : Colors.grey.withOpacity(0.3),
+                  ),
+                ),
+                child: IconButton(
+                  onPressed: _toggleSaveMovie,
+                  icon: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    child: Icon(
+                      _isSaved ? Icons.bookmark : Icons.bookmark_border,
+                      key: ValueKey(_isSaved),
+                      color: _isSaved ? Colors.red : Colors.grey[400],
+                      size: 28,
+                    ),
+                  ),
+                  tooltip: _isSaved ? 'Remove from saved' : 'Save movie',
+                  padding: const EdgeInsets.all(16),
+                ),
+              ),
+            ),
+          ],
         ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: _hasWatchProgress
-              ? const Color.fromARGB(255, 9, 255, 0)
-              : const Color.fromARGB(255, 73, 54, 244),
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          elevation: 8,
-          shadowColor:
-              (_hasWatchProgress
-                      ? Colors.orange
-                      : const Color.fromARGB(255, 54, 184, 244))
-                  .withOpacity(0.3),
-        ),
-      ),
+      ],
     );
+  }
+
+  // Add these methods
+  void _playDownloadedMovie() {
+    final downloadItem = _downloadManager.getDownloadForMovie(
+      widget.movie.title,
+    );
+    if (downloadItem != null &&
+        downloadItem.status == DownloadStatus.completed) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SimpleStreamPlayer(
+            streamUrl: 'file://${downloadItem.outputPath}',
+            movieTitle: widget.movie.title,
+            startPosition: _lastWatchedPosition,
+            onPositionChanged: _saveWatchProgress,
+            // isLocalFile: true,
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _cancelDownload() async {
+    if (_downloadId != null) {
+      await _downloadManager.cancelDownload(_downloadId!);
+      setState(() {
+        _isDownloading = false;
+        _downloadId = null;
+      });
+      _showSuccessSnackBar('Download cancelled');
+    }
   }
 
   Widget _buildSubtitleInfo() {

@@ -1,184 +1,151 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:soyo/models/moviemodel.dart';
-import 'dart:async';
 
 class CollectionsApi {
-  static const String _baseUrl = 'https://fed-airdate.pstream.mov';
-  static const String _apiKey = 'ad301b7cc82ffe19273e55e4d4206885';
+  static const String baseUrl =
+      'https://themoviedb.hexa.watch/api/tmdb/collection';
 
-  final Map<String, String> _collections = {
-    'apple': '$_baseUrl/appletv',
-    'prime': '$_baseUrl/prime',
-    'netflix': '$_baseUrl/netflixmovies',
-    'disney': '$_baseUrl/disney',
+  // Collection IDs and their names
+  static const Map<int, String> collectionIds = {
+    528: 'The Terminator Collection',
+    295: 'Pirates of the Caribbean Collection',
+    87359: 'Mission: Impossible Collection',
+    645: 'James Bond Collection',
+    2980: 'The Godfather Collection',
+    10: 'Star Wars Collection',
+    328: 'Jurassic Park Collection',
+    263: 'The Dark Knight Collection',
+    556: 'Spider-Man Collection',
+    119: 'The Lord of the Rings Collection',
+    9485: 'The Fast and the Furious Collection',
+    86066: 'The Avengers Collection',
+    313086: 'The Conjuring Collection',
+    151: 'Rocky Collection',
+    121938: 'The Hunger Games Collection',
+    131296: 'X-Men Collection',
+    1570: 'Die Hard Collection',
+    1241: 'Harry Potter Collection',
   };
 
-  // Cache for collections with 3-day expiration
-  static final Map<String, List<Movie>> _collectionCache = {};
-  static final Map<String, DateTime> _cacheTimestamps = {};
-  static const int _cacheValidityHours = 72; // 3 days
-
-  Future<List<int>> getCollectionTmdbIds(String collectionName) async {
+  Future<Map<String, dynamic>?> getCollection(int collectionId) async {
     try {
-      final response = await http
-          .get(
-            Uri.parse(_collections[collectionName]!),
-            headers: {
-              'User-Agent':
-                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            },
-          )
-          .timeout(Duration(seconds: 10));
+      final response = await http.get(
+        Uri.parse('$baseUrl/$collectionId'),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      );
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        return List<int>.from(data['tmdb_ids'] ?? []);
+        return json.decode(response.body);
+      } else {
+        print(
+          'Failed to fetch collection $collectionId: ${response.statusCode}',
+        );
+        return null;
       }
-      return [];
     } catch (e) {
-      print('Error fetching $collectionName collection: $e');
-      return [];
-    }
-  }
-
-  // Streaming method that yields movies as they become available
-  Stream<Movie> getCollectionMoviesStream(String collectionName) async* {
-    // Check cache first
-    if (_collectionCache.containsKey(collectionName) &&
-        _cacheTimestamps.containsKey(collectionName)) {
-      final cacheAge = DateTime.now().difference(
-        _cacheTimestamps[collectionName]!,
-      );
-      if (cacheAge.inHours < _cacheValidityHours) {
-        // Yield cached movies immediately
-        for (final movie in _collectionCache[collectionName]!) {
-          yield movie;
-        }
-        return;
-      }
-    }
-
-    final tmdbIds = await getCollectionTmdbIds(collectionName);
-    if (tmdbIds.isEmpty) return;
-
-    final movies = <Movie>[];
-    // Limit to 40 movies for performance
-    final idsToFetch = tmdbIds.take(40).toList();
-
-    // Process movies in batches for better performance
-    const batchSize = 5;
-    for (int i = 0; i < idsToFetch.length; i += batchSize) {
-      final batch = idsToFetch.skip(i).take(batchSize);
-      final futures = batch.map((id) => getMovieDetails(id));
-
-      try {
-        final results = await Future.wait(
-          futures,
-          eagerError: false,
-        ).timeout(Duration(seconds: 15));
-
-        for (final movie in results) {
-          if (movie != null) {
-            movies.add(movie);
-            yield movie; // Stream each movie as it becomes available
-          }
-        }
-      } catch (e) {
-        print('Error in batch processing: $e');
-        // Continue with next batch even if current batch fails
-      }
-    }
-
-    // Update cache after all movies are fetched
-    _collectionCache[collectionName] = movies;
-    _cacheTimestamps[collectionName] = DateTime.now();
-  }
-
-  // Traditional method for backward compatibility
-  Future<List<Movie>> getCollectionMovies(String collectionName) async {
-    // Check cache first
-    if (_collectionCache.containsKey(collectionName) &&
-        _cacheTimestamps.containsKey(collectionName)) {
-      final cacheAge = DateTime.now().difference(
-        _cacheTimestamps[collectionName]!,
-      );
-      if (cacheAge.inHours < _cacheValidityHours) {
-        return _collectionCache[collectionName]!;
-      }
-    }
-
-    final movies = <Movie>[];
-    await for (final movie in getCollectionMoviesStream(collectionName)) {
-      movies.add(movie);
-    }
-
-    return movies;
-  }
-
-  Future<Movie?> getMovieDetails(int tmdbId) async {
-    try {
-      final response = await http
-          .get(
-            Uri.parse(
-              'https://api.themoviedb.org/3/movie/$tmdbId?api_key=$_apiKey&append_to_response=credits',
-            ),
-            headers: {
-              'User-Agent':
-                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            },
-          )
-          .timeout(Duration(seconds: 8));
-
-      if (response.statusCode == 200) {
-        final jsonData = json.decode(response.body);
-        return Movie.fromJson(jsonData);
-      }
-      return null;
-    } catch (e) {
-      print('Error fetching movie details for $tmdbId: $e');
+      print('Error fetching collection $collectionId: $e');
       return null;
     }
   }
 
-  // Get cache info
-  Map<String, dynamic> getCacheInfo() {
-    return {
-      'cached_collections': _collectionCache.keys.toList(),
-      'cache_timestamps': _cacheTimestamps.map(
-        (key, value) => MapEntry(key, value.toIso8601String()),
-      ),
-      'cache_validity_hours': _cacheValidityHours,
-    };
+  Future<List<Movie>> getCollectionMovies(int collectionId) async {
+    try {
+      final collectionData = await getCollection(collectionId);
+      if (collectionData == null) return [];
+
+      final parts = collectionData['parts'] as List<dynamic>? ?? [];
+
+      return parts.map((part) {
+        return Movie(
+          id: part['id'] ?? 0,
+          title: part['title'] ?? part['original_title'] ?? 'Unknown Title',
+          overview: part['overview'] ?? '',
+          releaseDate: part['release_date'] ?? '',
+          posterPath: part['poster_path'] ?? '',
+          backdropPath: part['backdrop_path'] ?? '',
+          voteAverage: (part['vote_average'] ?? 0.0).toDouble(),
+          voteCount: part['vote_count'] ?? 0,
+          popularity: (part['popularity'] ?? 0.0).toDouble(),
+          genreIds: List<int>.from(part['genre_ids'] ?? []),
+        );
+      }).toList();
+    } catch (e) {
+      print('Error processing collection $collectionId movies: $e');
+      return [];
+    }
   }
 
-  // Clear specific collection cache
-  void clearCollectionCache(String collectionName) {
-    _collectionCache.remove(collectionName);
-    _cacheTimestamps.remove(collectionName);
-  }
+  Future<Map<String, List<Movie>>> getAllCollections() async {
+    Map<String, List<Movie>> collections = {};
 
-  // Clear all cache
-  static void clearCache() {
-    _collectionCache.clear();
-    _cacheTimestamps.clear();
-  }
+    // Process collections in batches to avoid overwhelming the API
+    final collectionEntries = collectionIds.entries.toList();
 
-  // Check if collection is cached and valid
-  bool isCollectionCached(String collectionName) {
-    if (!_collectionCache.containsKey(collectionName) ||
-        !_cacheTimestamps.containsKey(collectionName)) {
-      return false;
+    for (int i = 0; i < collectionEntries.length; i += 3) {
+      final batch = collectionEntries.skip(i).take(3);
+
+      final futures = batch.map((entry) async {
+        final movies = await getCollectionMovies(entry.key);
+        if (movies.isNotEmpty) {
+          collections[entry.value] = movies;
+        }
+      });
+
+      await Future.wait(futures);
+
+      // Small delay between batches to be respectful to the API
+      if (i + 3 < collectionEntries.length) {
+        await Future.delayed(Duration(milliseconds: 500));
+      }
     }
 
-    final cacheAge = DateTime.now().difference(
-      _cacheTimestamps[collectionName]!,
-    );
-    return cacheAge.inHours < _cacheValidityHours;
+    return collections;
   }
 
-  // Get cached collection size
-  int getCachedCollectionSize(String collectionName) {
-    return _collectionCache[collectionName]?.length ?? 0;
+  Future<Map<String, dynamic>?> getCollectionDetails(int collectionId) async {
+    return await getCollection(collectionId);
+  }
+
+  // Get featured collections (subset of all collections)
+  Future<Map<String, List<Movie>>> getFeaturedCollections() async {
+    final featuredIds = [
+      86066,
+      313086,
+      1241,
+      87359,
+      10,
+      328,
+    ]; // Avengers, Conjuring, Harry Potter, Mission Impossible, Star Wars, Jurassic Park
+    Map<String, List<Movie>> featuredCollections = {};
+
+    for (int collectionId in featuredIds) {
+      final collectionName = collectionIds[collectionId];
+      if (collectionName != null) {
+        final movies = await getCollectionMovies(collectionId);
+        if (movies.isNotEmpty) {
+          featuredCollections[collectionName] = movies;
+        }
+      }
+    }
+
+    return featuredCollections;
+  }
+
+  // Search collections by name
+  Future<Map<String, List<Movie>>> searchCollections(String query) async {
+    final allCollections = await getAllCollections();
+    final filteredCollections = <String, List<Movie>>{};
+
+    for (final entry in allCollections.entries) {
+      if (entry.key.toLowerCase().contains(query.toLowerCase())) {
+        filteredCollections[entry.key] = entry.value;
+      }
+    }
+
+    return filteredCollections;
   }
 }

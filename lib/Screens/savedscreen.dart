@@ -1,55 +1,143 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:soyo/Screens/homescreen.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:soyo/models/moviemodel.dart';
+import 'package:soyo/Screens/movieDetailScreen.dart';
+import 'package:soyo/models/savedmoviesmodel.dart';
 
 class SavedScreen extends StatefulWidget {
   @override
   _SavedScreenState createState() => _SavedScreenState();
-
-  // Expose static helpers to other screens
-  static void addMovie({
-    required String name,
-    required String m3u8Link,
-    List<String>? subtitles,
-  }) {
-    _SavedScreenState.addMovie(
-      name: name,
-      m3u8Link: m3u8Link,
-      subtitles: subtitles,
-    );
-  }
-
-  static bool isMovieSaved(String movieName) {
-    return _SavedScreenState.isMovieSaved(movieName);
-  }
-
-  static int getSavedMoviesCount() {
-    return _SavedScreenState.getSavedMoviesCount();
-  }
 }
 
-class _SavedScreenState extends State<SavedScreen> {
-  // In-memory storage for saved movies (use SharedPreferences later if needed)
-  static List<Map<String, dynamic>> _savedMovies = [];
+class _SavedScreenState extends State<SavedScreen>
+    with TickerProviderStateMixin {
+  List<SavedMovie> _savedMovies = [];
+  bool _isLoading = true;
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+    _loadSavedMovies();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadSavedMovies() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedMoviesJson = prefs.getStringList('saved_movies') ?? [];
+
+      setState(() {
+        _savedMovies = savedMoviesJson
+            .map((json) => SavedMovie.fromJson(jsonDecode(json)))
+            .toList();
+        _isLoading = false;
+      });
+
+      _animationController.forward();
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      print('Error loading saved movies: $e');
+    }
+  }
+
+  Future<void> _removeSavedMovie(String movieId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedMoviesJson = prefs.getStringList('saved_movies') ?? [];
+
+      savedMoviesJson.removeWhere((json) {
+        final movie = SavedMovie.fromJson(jsonDecode(json));
+        return movie.id == movieId;
+      });
+
+      await prefs.setStringList('saved_movies', savedMoviesJson);
+
+      setState(() {
+        _savedMovies.removeWhere((movie) => movie.id == movieId);
+      });
+
+      _showSnackBar('Movie removed from saved list', Colors.orange);
+    } catch (e) {
+      _showSnackBar('Failed to remove movie', Colors.red);
+    }
+  }
+
+  void _showSnackBar(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              color == Colors.red ? Icons.error_outline : Icons.info_outline,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                message,
+                style: GoogleFonts.nunito(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.lightGreen,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
-        title: Text('Saved Movies', style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.transparent,
+        backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
-        actions: [
-          if (_savedMovies.isNotEmpty)
-            IconButton(
-              onPressed: _clearAllMovies,
-              icon: Icon(Icons.clear_all, color: Colors.red),
-              tooltip: 'Clear All',
-            ),
-        ],
+        title: Text(
+          'Saved Movies',
+          style: GoogleFonts.nunito(
+            color: Colors.white,
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
-      body: _savedMovies.isEmpty ? _buildEmptyState() : _buildMoviesList(),
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+              ),
+            )
+          : _savedMovies.isEmpty
+          ? _buildEmptyState()
+          : FadeTransition(
+              opacity: _fadeAnimation,
+              child: _buildSavedMoviesList(),
+            ),
     );
   }
 
@@ -58,61 +146,30 @@ class _SavedScreenState extends State<SavedScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            padding: EdgeInsets.all(30),
-            decoration: BoxDecoration(
-              color: Colors.grey[900],
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.bookmark_border,
-              size: 80,
-              color: Colors.grey[600],
-            ),
-          ),
-          SizedBox(height: 30),
+          Icon(Icons.bookmark_border, size: 80, color: Colors.grey[600]),
+          const SizedBox(height: 16),
           Text(
             'No Saved Movies',
-            style: TextStyle(
+            style: GoogleFonts.nunito(
               color: Colors.white,
               fontSize: 24,
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          SizedBox(height: 10),
+          const SizedBox(height: 8),
           Text(
-            'Search for movies and save them here\nfor quick access later',
-            style: TextStyle(color: Colors.grey[400], fontSize: 16),
+            'Start saving movies to watch later!',
+            style: GoogleFonts.nunito(color: Colors.grey[400], fontSize: 16),
             textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 30),
-          ElevatedButton.icon(
-            onPressed: () {
-              // Navigate to home screen
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => HomeScreen()),
-                (Route<dynamic> route) => false,
-              );
-            },
-            icon: Icon(Icons.search),
-            label: Text('Start Searching'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-              padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(25),
-              ),
-            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildMoviesList() {
+  Widget _buildSavedMoviesList() {
     return ListView.builder(
-      padding: EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
       itemCount: _savedMovies.length,
       itemBuilder: (context, index) {
         final movie = _savedMovies[index];
@@ -121,325 +178,213 @@ class _SavedScreenState extends State<SavedScreen> {
     );
   }
 
-  Widget _buildMovieCard(Map<String, dynamic> movie, int index) {
+  Widget _buildMovieCard(SavedMovie movie, int index) {
     return Container(
-      margin: EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: Colors.grey[900],
-        borderRadius: BorderRadius.circular(15),
+        color: Colors.grey[900]?.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.grey[800]!),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 8,
-            offset: Offset(0, 4),
-          ),
-        ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Container(
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.red.withOpacity(0.1),
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(15),
-                topRight: Radius.circular(15),
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        movie['name'],
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Saved on ${movie['savedDate']}',
-                        style: TextStyle(color: Colors.grey[400], fontSize: 12),
-                      ),
-                    ],
+      child: InkWell(
+        onTap: () => _navigateToMovieDetail(movie),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Movie Poster
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: CachedNetworkImage(
+                  imageUrl: movie.posterUrl,
+                  width: 80,
+                  height: 120,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(
+                    width: 80,
+                    height: 120,
+                    color: Colors.grey[800],
+                    child: const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    width: 80,
+                    height: 120,
+                    color: Colors.grey[800],
+                    child: const Icon(Icons.movie, color: Colors.grey),
                   ),
                 ),
-                IconButton(
-                  onPressed: () => _copyToClipboard(movie['m3u8_link']),
-                  icon: Icon(Icons.copy, color: Colors.grey),
-                  tooltip: 'Copy Link',
-                ),
-                IconButton(
-                  onPressed: () => _removeMovie(index),
-                  icon: Icon(Icons.delete, color: Colors.red),
-                  tooltip: 'Remove',
-                ),
-              ],
-            ),
-          ),
+              ),
+              const SizedBox(width: 16),
 
-          // Stream link
-          Padding(
-            padding: EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+              // Movie Details
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.play_circle, color: Colors.green, size: 20),
-                    SizedBox(width: 8),
                     Text(
-                      'Stream Link',
-                      style: TextStyle(
+                      movie.title,
+                      style: GoogleFonts.nunito(
                         color: Colors.white,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
                       ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
+                    const SizedBox(height: 8),
+
+                    // Rating and Year
+                    Row(
+                      children: [
+                        Icon(Icons.star_rounded, color: Colors.amber, size: 16),
+                        const SizedBox(width: 4),
+                        Text(
+                          movie.voteAverage.toStringAsFixed(1),
+                          style: GoogleFonts.nunito(
+                            color: Colors.amber,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        if (movie.releaseDate.isNotEmpty) ...[
+                          Icon(
+                            Icons.calendar_today_rounded,
+                            color: Colors.blue,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            movie.releaseDate.split('-')[0],
+                            style: GoogleFonts.nunito(
+                              color: Colors.blue,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    // Overview
+                    if (movie.overview.isNotEmpty)
+                      Text(
+                        movie.overview,
+                        style: GoogleFonts.nunito(
+                          color: Colors.grey[400],
+                          fontSize: 13,
+                          height: 1.4,
+                        ),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+
+                    const SizedBox(height: 12),
+
+                    // Cast info if available
+                    if (movie.cast.isNotEmpty) ...[
+                      Text(
+                        'Cast: ${movie.cast.take(3).join(', ')}',
+                        style: GoogleFonts.nunito(
+                          color: Colors.grey[500],
+                          fontSize: 12,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ],
                 ),
-                SizedBox(height: 8),
-                Container(
-                  padding: EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey[700]!),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          movie['m3u8_link'],
-                          style: TextStyle(color: Colors.blue, fontSize: 12),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Buttons
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _playMovie(movie),
-                    icon: Icon(Icons.play_arrow, size: 18),
-                    label: Text('Play'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                ),
-                SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _shareMovie(movie),
-                    icon: Icon(Icons.share, size: 18),
-                    label: Text('Share'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.grey[700],
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Subtitles
-          if (movie['subtitles'] != null &&
-              (movie['subtitles'] as List).isNotEmpty)
-            Container(
-              margin: EdgeInsets.all(16),
-              padding: EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.purple.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.purple.withOpacity(0.5)),
               ),
-              child: Row(
-                children: [
-                  Icon(Icons.subtitles, color: Colors.purple, size: 16),
-                  SizedBox(width: 8),
-                  Text(
-                    '${(movie['subtitles'] as List).length} subtitle(s) available',
-                    style: TextStyle(
-                      color: Colors.purple,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
+
+              // Remove button
+              IconButton(
+                onPressed: () => _showRemoveDialog(movie),
+                icon: const Icon(Icons.close, color: Colors.red),
+                tooltip: 'Remove from saved',
               ),
-            ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  void _copyToClipboard(String text) {
-    Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Link copied to clipboard'),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  void _playMovie(Map<String, dynamic> movie) {
-    _copyToClipboard(movie['m3u8_link']);
+  void _showRemoveDialog(SavedMovie movie) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: Row(
-          children: [
-            Icon(Icons.play_circle, color: Colors.red),
-            SizedBox(width: 10),
-            Text('Play Movie', style: TextStyle(color: Colors.white)),
-          ],
-        ),
-        content: Text(
-          'Stream link copied to clipboard.\n\nOpen in your preferred video player:\n• VLC\n• MX Player\n• Any M3U8 player',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('OK', style: TextStyle(color: Colors.red)),
+        title: Text(
+          'Remove Movie',
+          style: GoogleFonts.nunito(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
           ),
-        ],
-      ),
-    );
-  }
-
-  void _shareMovie(Map<String, dynamic> movie) {
-    final shareText =
-        'Check out this movie: ${movie['name']}\n\nStream Link: ${movie['m3u8_link']}';
-    _copyToClipboard(shareText);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Movie details copied to clipboard for sharing'),
-        backgroundColor: Colors.blue,
-        duration: Duration(seconds: 3),
-      ),
-    );
-  }
-
-  void _removeMovie(int index) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: Text('Remove Movie', style: TextStyle(color: Colors.white)),
+        ),
         content: Text(
-          'Are you sure you want to remove "${_savedMovies[index]['name']}"?',
-          style: TextStyle(color: Colors.white70),
+          'Are you sure you want to remove "${movie.title}" from your saved movies?',
+          style: GoogleFonts.nunito(color: Colors.grey[300]),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: TextStyle(color: Colors.grey)),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.nunito(color: Colors.grey[400]),
+            ),
           ),
           TextButton(
             onPressed: () {
-              setState(() {
-                _savedMovies.removeAt(index);
-              });
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Movie removed'),
-                  backgroundColor: Colors.red,
-                ),
-              );
+              _removeSavedMovie(movie.id);
             },
-            child: Text('Remove', style: TextStyle(color: Colors.red)),
+            child: Text('Remove', style: GoogleFonts.nunito(color: Colors.red)),
           ),
         ],
       ),
     );
   }
 
-  void _clearAllMovies() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: Text('Clear All Movies', style: TextStyle(color: Colors.white)),
-        content: Text(
-          'Are you sure you want to remove all saved movies?',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: TextStyle(color: Colors.grey)),
-          ),
-          TextButton(
-            onPressed: () {
-              setState(() {
-                _savedMovies.clear();
-              });
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('All movies cleared'),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            },
-            child: Text('Clear All', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
+  void _navigateToMovieDetail(SavedMovie savedMovie) async {
+    // Convert SavedMovie back to Movie object
+    final movie = Movie(
+      id: int.parse(savedMovie.id),
+      title: savedMovie.title,
+      overview: savedMovie.overview,
+      posterPath: _extractPath(savedMovie.posterUrl),
+      backdropPath: _extractPath(savedMovie.backdropUrl),
+      releaseDate: savedMovie.releaseDate,
+      voteAverage: savedMovie.voteAverage,
+      originalTitle: savedMovie.title,
+      originalLanguage: 'en', // Default
+      runtime: null, // Will be loaded in detail screen
+      voteCount: 0, // Default value since we don't store this
+      genreIds: [], // Default empty list since we don't store this
     );
+
+    // Navigate to movie detail screen and refresh saved movies when returning
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => MovieDetailScreen(movie: movie)),
+    );
+
+    // Refresh the saved movies list when returning from detail screen
+    _loadSavedMovies();
   }
 
-  // Static helpers
-  static void addMovie({
-    required String name,
-    required String m3u8Link,
-    List<String>? subtitles,
-  }) {
-    bool exists = _savedMovies.any((movie) => movie['name'] == name);
-    if (!exists) {
-      _savedMovies.add({
-        'name': name,
-        'm3u8_link': m3u8Link,
-        'subtitles': subtitles ?? [],
-        'savedDate': DateTime.now().toString().split(' ')[0],
-        'savedTime': DateTime.now().millisecondsSinceEpoch,
-      });
+  String _extractPath(String fullUrl) {
+    // Extract the path from full TMDB URL
+    if (fullUrl.contains('image.tmdb.org')) {
+      final parts = fullUrl.split('/');
+      return '/${parts.last}';
     }
-  }
-
-  static bool isMovieSaved(String movieName) {
-    return _savedMovies.any((movie) => movie['name'] == movieName);
-  }
-
-  static int getSavedMoviesCount() {
-    return _savedMovies.length;
+    return fullUrl;
   }
 }

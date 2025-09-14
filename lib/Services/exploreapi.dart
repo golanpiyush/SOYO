@@ -21,6 +21,18 @@ class ExploreApi {
     }
   }
 
+  static Future<Map<String, dynamic>> getUpcomingMovies({int page = 1}) async {
+    final response = await http.get(
+      Uri.parse('$cinebyBaseUrl/movie/upcoming?page=$page&api_key=$apiKey'),
+    );
+
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      throw Exception('Failed to load upcoming movies');
+    }
+  }
+
   // Get top rated movies from Cineby
   static Future<Map<String, dynamic>> getTopRatedMovies({int page = 1}) async {
     final response = await http.get(
