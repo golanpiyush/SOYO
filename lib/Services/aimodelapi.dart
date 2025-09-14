@@ -5,7 +5,7 @@ import 'package:soyo/models/savedmoviesmodel.dart';
 
 class SoyoAiApi {
   static const String _apiKey =
-      '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';
+      'your-api-key(truly)';
   static const String _apiUrl = 'https://openrouter.ai/api/v1/chat/completions';
 
   static String _buildSystemPrompt(List<SavedMovie> savedMovies) {
