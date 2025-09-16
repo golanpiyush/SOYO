@@ -8,6 +8,15 @@
   [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20iOS-green.svg)](https://flutter.dev/)
   [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
   [![Stars](https://img.shields.io/github/stars/golanpiyush/SOYO?style=social)](https://github.com/golanpiyush/SOYO/stargazers)
+
+  ## 🌐 API Status
+
+| Service      | Endpoint                         | Status |
+|-------------|----------------------------------|--------|
+| 🎥 Movies   | [db.cineby.app](https://db.cineby.app/3) | ![Movies API](https://img.shields.io/website?url=https%3A%2F%2Fdb.cineby.app%2F3&label=Movies%20API&style=flat-square&up_message=passing&down_message=failing&logo=movie) |
+| 📺 TV Shows | [cinemaos.me](https://cinemaos.me/) | ![TV Shows API](https://img.shields.io/website?url=https%3A%2F%2Fcinemaos.me&label=TV%20API&style=flat-square&up_message=passing&down_message=failing&logo=television) |
+| 🎌 Anime    | [flixer.su](https://flixer.su/)    | ![Anime API](https://img.shields.io/website?url=https%3A%2F%2Fflixer.su&label=Anime%20API&style=flat-square&up_message=passing&down_message=failing&logo=anilist) |
+
 </div>
 
 **SOYO** is a modern, feature-rich streaming application built with Flutter that provides seamless access to movies and TV shows from multiple streaming platforms. Experience cinema in your pocket with stunning animations, intuitive design, and powerful streaming capabilities.
