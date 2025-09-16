@@ -2,11 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:soyo/Screens/animedetails.dart';
+import 'package:soyo/Screens/hindimoviesScreen.dart';
 import 'package:soyo/Screens/moviechatscreen.dart';
 import 'package:soyo/Screens/playerScreen.dart';
 import 'package:soyo/Screens/movieDetailScreen.dart';
+import 'package:soyo/Services/anime_collection_api.dart';
+import 'package:soyo/Services/hindimovies_api.dart';
 import 'package:soyo/Services/m3u8api.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:soyo/models/anime_model.dart';
 import 'package:soyo/models/moviemodel.dart';
 import 'package:soyo/Services/collections_api.dart';
 
@@ -18,12 +23,18 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final TextEditingController _movieController = TextEditingController();
   final M3U8Api _api = M3U8Api();
-  final CollectionsApi _collectionsApi = CollectionsApi();
+  HindiMoviesApi _hindiMoviesApi = HindiMoviesApi();
   bool _isLoading = false;
   Map<String, dynamic>? _searchResult;
   List<Movie> _searchResults = [];
   bool _showMultipleResults = false;
   String _searchStatus = '';
+
+  List<Movie> _hindiMovies = [];
+  bool _hindiMoviesLoading = true;
+  AnimeCollectionApi _animeApi = AnimeCollectionApi();
+  List<Anime> _animeList = [];
+  bool _animeLoading = true;
 
   // Collections data - now supports streaming
   Map<String, List<Movie>> _collections = {};
@@ -52,6 +63,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _initAnimations();
+    _loadHindiMovies();
+    _loadAnime();
     _loadCollectionsStreaming();
   }
 
@@ -111,7 +124,48 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _shimmerController.dispose();
     _searchController.dispose();
     _movieController.dispose();
+    _animeApi.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadAnime() async {
+    try {
+      setState(() {
+        _animeLoading = true;
+      });
+
+      final animeResponse = await _animeApi.getPopularAnime(page: 1);
+
+      setState(() {
+        _animeList = animeResponse.results;
+        _animeLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _animeLoading = false;
+      });
+      print('Error loading anime: $e');
+    }
+  }
+
+  Future<void> _loadHindiMovies() async {
+    try {
+      setState(() {
+        _hindiMoviesLoading = true;
+      });
+
+      final movies = await _hindiMoviesApi.getLatestHindiMovies(limit: 20);
+
+      setState(() {
+        _hindiMovies = movies;
+        _hindiMoviesLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _hindiMoviesLoading = false;
+      });
+      print('Error loading Hindi movies: $e');
+    }
   }
 
   // Streaming collections loading - loads each collection independently
@@ -454,11 +508,49 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildContent() {
     final sections = [
       {
+        'title': 'Anime Collection',
+        'movies': _animeList
+            .map(
+              (anime) => Movie(
+                id: anime.id,
+                title: anime.name,
+                originalTitle: anime.originalName,
+                overview: anime.overview,
+                posterPath: anime.posterPath ?? "",
+                backdropPath: anime.backdropPath ?? "",
+                releaseDate: anime.firstAirDate,
+                voteAverage: anime.voteAverage,
+                voteCount: anime.voteCount,
+                popularity: anime.popularity,
+                genreIds: anime.genreIds,
+                adult: anime.adult,
+                originalLanguage: anime.originalLanguage,
+              ),
+            )
+            .toList(),
+        'gradient': [Colors.purple, Colors.pink],
+        'icon': 'assets/icon/anime_icon.svg',
+        'loading': _animeLoading,
+        'isHindiMovies': false,
+        'isAnime': true, // ✅ ADD THIS LINE
+      },
+      {
+        'title': 'Hindi Movies',
+        'movies': _hindiMovies,
+        'gradient': [Colors.orange, Colors.red],
+        'icon': 'assets/icon/bollywood_icon.svg',
+        'loading': _hindiMoviesLoading,
+        'isHindiMovies': true,
+        'isAnime': false, // ✅ ADD THIS LINE
+      },
+      {
         'title': 'Apple TV+',
         'movies': _collections['Apple TV+'] ?? [],
         'gradient': [Colors.white, Colors.black],
         'icon': 'assets/icon/appletv_icon.svg',
         'loading': _collectionLoading['Apple TV+'] ?? false,
+        'isHindiMovies': false,
+        'isAnime': false, // ✅ ADD THIS LINE
       },
       {
         'title': 'Amazon Prime',
@@ -466,6 +558,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'gradient': [Colors.blue, Colors.lightBlue],
         'icon': 'assets/icon/amazonprime_icon.svg',
         'loading': _collectionLoading['Prime Video'] ?? false,
+        'isHindiMovies': false,
+        'isAnime': false, // ✅ ADD THIS LINE
       },
       {
         'title': 'Netflix',
@@ -473,6 +567,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'gradient': [Colors.red, Colors.black],
         'icon': 'assets/icon/netflix_icon.svg',
         'loading': _collectionLoading['Netflix'] ?? false,
+        'isHindiMovies': false,
+        'isAnime': false, // ✅ ADD THIS LINE
       },
       {
         'title': 'Disney+',
@@ -480,6 +576,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'gradient': [Colors.blue, Colors.purple],
         'icon': 'assets/icon/disneyplus_icon.svg',
         'loading': _collectionLoading['Disney+'] ?? false,
+        'isHindiMovies': false,
+        'isAnime': false, // ✅ ADD THIS LINE
       },
     ];
 
@@ -511,6 +609,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         section['gradient'],
                         section['icon'],
                         section['loading'],
+                        section['isHindiMovies'] ?? false,
+                        isAnime:
+                            section['isAnime'] ??
+                            false, // ✅ PASS isAnime PARAMETER
                       ),
                     ),
                   );
@@ -523,88 +625,128 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  // ✅ FIXED: Update your _buildSection calls to include isAnime parameter
+
   Widget _buildSection(
     String title,
     List<Movie> movies,
     List<Color> gradientColors,
     String iconPath,
     bool isLoading,
-  ) {
+    bool isHindiMovies, {
+    bool isAnime = false, // Optional parameter
+  }) {
     if (isLoading) {
       return _buildSectionShimmer(title, gradientColors);
     }
 
-    if (movies.isEmpty) return SizedBox();
+    if (movies.isEmpty) return const SizedBox();
 
     return Container(
-      margin: EdgeInsets.only(bottom: 30),
+      margin: const EdgeInsets.only(bottom: 30),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                // Platform icon
-                Container(
-                  width: 32,
-                  height: 32,
-                  padding: EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: SvgPicture.asset(
-                    iconPath,
-                    width: 24,
-                    height: 24,
-                    color: Colors.white,
-                  ),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: GestureDetector(
+              onTap: isHindiMovies
+                  ? _navigateToHindiMovies
+                  : isAnime
+                  ? _navigateToAnime // ✅ This will trigger anime navigation
+                  : null,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: (isHindiMovies || isAnime)
+                      ? Colors.white.withOpacity(0.05)
+                      : Colors.transparent,
                 ),
-                SizedBox(width: 12),
-                Expanded(
-                  child: ShaderMask(
-                    shaderCallback: (bounds) => LinearGradient(
-                      colors: [
-                        Colors.white,
-                        gradientColors[0].withOpacity(0.8),
-                      ],
-                    ).createShader(bounds),
-                    child: Text(
-                      title,
-                      style: GoogleFonts.nunito(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.5,
+                padding: EdgeInsets.symmetric(
+                  horizontal: (isHindiMovies || isAnime) ? 12 : 0,
+                  vertical: (isHindiMovies || isAnime) ? 8 : 0,
+                ),
+                child: Row(
+                  children: [
+                    // Platform icon
+                    Container(
+                      width: 32,
+                      height: 32,
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: iconPath.endsWith('.svg')
+                          ? SvgPicture.asset(
+                              iconPath,
+                              width: 24,
+                              height: 24,
+                              color: Colors.white,
+                            )
+                          : const Icon(
+                              Icons.movie,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ShaderMask(
+                        shaderCallback: (bounds) => LinearGradient(
+                          colors: [
+                            Colors.white,
+                            gradientColors[0].withOpacity(0.9),
+                          ],
+                        ).createShader(bounds),
+                        child: Text(
+                          title,
+                          style: GoogleFonts.nunito(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: gradientColors),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '${movies.length}',
-                    style: GoogleFonts.nunito(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: gradientColors),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${movies.length}',
+                        style: GoogleFonts.nunito(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
-                  ),
+                    if (isHindiMovies || isAnime) ...[
+                      const SizedBox(width: 8),
+                      const Icon(
+                        Icons.arrow_forward_ios,
+                        color: Colors.white70,
+                        size: 16,
+                      ),
+                    ],
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
-          SizedBox(height: 15),
+          const SizedBox(height: 15),
           Container(
             height: 250,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              physics: BouncingScrollPhysics(),
+              physics: const BouncingScrollPhysics(),
               itemCount: movies.length,
               itemBuilder: (context, index) {
                 return TweenAnimationBuilder<double>(
@@ -613,7 +755,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   curve: Curves.elasticOut,
                   builder: (context, value, child) {
                     return Transform.scale(
-                      scale: 0.8 + (0.2 * value),
+                      scale: 0.95 + (0.05 * value),
                       child: _buildMovieCard(
                         movies[index],
                         index,
@@ -734,6 +876,55 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  void _navigateToHindiMovies() {
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            HindiMoviesScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return SlideTransition(
+            position: Tween<Offset>(begin: Offset(1.0, 0.0), end: Offset.zero)
+                .animate(
+                  CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                  ),
+                ),
+            child: child,
+          );
+        },
+        transitionDuration: Duration(milliseconds: 300),
+      ),
+    );
+  }
+
+  void _navigateToAnime() {
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            AnimeDetailScreen(
+              categoryName: 'Anime Collection',
+              gradientColors: [Colors.purple, Colors.pink],
+            ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return SlideTransition(
+            position: Tween<Offset>(begin: Offset(1.0, 0.0), end: Offset.zero)
+                .animate(
+                  CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                  ),
+                ),
+            child: child,
+          );
+        },
+        transitionDuration: Duration(milliseconds: 300),
+      ),
+    );
+  }
+
   Widget _buildEmptySection() {
     return Center(
       child: Text(
@@ -773,17 +964,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         borderRadius: BorderRadius.circular(18),
                         boxShadow: [
                           BoxShadow(
-                            color: gradientColors[0].withOpacity(0.3),
+                            color: gradientColors[0].withOpacity(0.6),
                             blurRadius: 20,
                             offset: Offset(0, 10),
-                            spreadRadius: -5,
+                            spreadRadius: -3,
                           ),
                         ],
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(18),
                         child: CachedNetworkImage(
-                          imageUrl: movie.posterUrl,
+                          imageUrl: movie.posterPath.isNotEmpty
+                              ? 'https://image.tmdb.org/t/p/w500${movie.posterPath}'
+                              : movie.posterUrl,
                           fit: BoxFit.cover,
                           width: 140,
                           height: 190,
@@ -825,20 +1018,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ),
                       ),
                     ),
-                    Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(18),
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.transparent,
-                            Colors.black.withOpacity(0.7),
-                          ],
-                        ),
-                      ),
-                    ),
+                    // Removed the gradient overlay container that was reducing opacity
                     Positioned(
                       top: 10,
                       right: 10,
@@ -848,10 +1028,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.7),
+                          color: Colors.black.withOpacity(0.8),
                           borderRadius: BorderRadius.circular(15),
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withOpacity(0.3),
                             width: 1,
                           ),
                         ),

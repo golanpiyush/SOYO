@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ExploreTvApi {
   static const String baseUrl = 'https://cinemaos.me/api/tmdb';
@@ -11,10 +12,22 @@ class ExploreTvApi {
   static const String omdbBaseUrl = 'http://www.omdbapi.com/';
   static const String omdbApiKey = '16c27680';
 
-  // Retry configuration
-  static const int maxRetries = 10;
+  static const List<String> tmdbApiKeys = [
+    'ad301b7cc82ffe19273e55e4d4206885',
+    'adc48d20c0956934fb224de5c40bb85d',
+    '84259f99204eeb7d45c7e3d8e36c6123',
+  ];
+
+  // Retry configuration - Updated
+  static const int maxRetries = 5;
   static const Duration requestTimeout = Duration(seconds: 2);
-  static const Duration retryDelay = Duration(milliseconds: 500);
+  static const Duration retryDelay = Duration(seconds: 2);
+
+  // Cache configuration - New
+  static const Duration cacheExpiry = Duration(hours: 24);
+  static const String showDetailsCachePrefix = 'show_details_';
+  static const String seasonDetailsCachePrefix = 'season_details_';
+  static const String showSeasonsCachePrefix = 'show_seasons_';
 
   // Provider IDs for different streaming services
   static const Map<String, int> providers = {
@@ -27,20 +40,60 @@ class ExploreTvApi {
     'Paramount+': 531,
   };
 
+  /// Helper method to get cached data
+  static Future<Map<String, dynamic>?> _getCachedData(String key) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedJson = prefs.getString(key);
+      final cacheTimestamp = prefs.getInt('${key}_timestamp');
+
+      if (cachedJson != null && cacheTimestamp != null) {
+        final cacheTime = DateTime.fromMillisecondsSinceEpoch(cacheTimestamp);
+        if (DateTime.now().difference(cacheTime) < cacheExpiry) {
+          return json.decode(cachedJson);
+        } else {
+          // Cache expired, remove it
+          await prefs.remove(key);
+          await prefs.remove('${key}_timestamp');
+        }
+      }
+    } catch (e) {
+      print('Error reading cache for $key: $e');
+    }
+    return null;
+  }
+
+  /// Helper method to cache data
+  static Future<void> _cacheData(String key, Map<String, dynamic> data) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(key, json.encode(data));
+      await prefs.setInt(
+        '${key}_timestamp',
+        DateTime.now().millisecondsSinceEpoch,
+      );
+    } catch (e) {
+      print('Error caching data for $key: $e');
+    }
+  }
+
   /// Helper method to make HTTP requests with retry mechanism
   static Future<http.Response> _makeRequestWithRetry(
-    String url, {
+    String baseUrl, {
+    Map<String, String>? queryParams,
     Map<String, String>? headers,
-    Duration? timeout,
+    bool useTmdbApiKey = true,
     int retries = maxRetries,
   }) async {
     Exception? lastException;
 
-    for (int attempt = 0; attempt < retries; attempt++) {
+    // If not using TMDB API key, make single request
+    if (!useTmdbApiKey) {
+      final uri = Uri.parse(baseUrl).replace(queryParameters: queryParams);
       try {
-        final response = await http
+        return await http
             .get(
-              Uri.parse(url),
+              uri,
               headers:
                   headers ??
                   {
@@ -48,24 +101,58 @@ class ExploreTvApi {
                     'Content-Type': 'application/json',
                   },
             )
-            .timeout(timeout ?? requestTimeout);
-
-        if (response.statusCode == 200) {
-          return response;
-        } else {
-          lastException = Exception('HTTP ${response.statusCode}');
-        }
+            .timeout(requestTimeout);
       } catch (e) {
-        lastException = Exception('Request failed: $e');
-      }
-
-      // Wait before retrying (except on last attempt)
-      if (attempt < retries - 1) {
-        await Future.delayed(retryDelay);
+        throw Exception('Request failed: $e');
       }
     }
 
-    throw lastException ?? Exception('All retry attempts failed');
+    // For TMDB requests, try each API key with retries
+    for (int keyIndex = 0; keyIndex < tmdbApiKeys.length; keyIndex++) {
+      final apiKey = tmdbApiKeys[keyIndex];
+      final updatedParams = Map<String, String>.from(queryParams ?? {});
+      updatedParams['api_key'] = apiKey;
+
+      for (int attempt = 0; attempt < retries; attempt++) {
+        try {
+          final uri = Uri.parse(
+            baseUrl,
+          ).replace(queryParameters: updatedParams);
+          final response = await http
+              .get(
+                uri,
+                headers:
+                    headers ??
+                    {
+                      'Accept': 'application/json',
+                      'Content-Type': 'application/json',
+                    },
+              )
+              .timeout(requestTimeout);
+
+          if (response.statusCode == 200) {
+            return response;
+          } else if (response.statusCode == 401 || response.statusCode == 429) {
+            // API key issue or rate limit, try next key
+            lastException = Exception(
+              'API key issue: HTTP ${response.statusCode}',
+            );
+            break; // Break retry loop for this key
+          } else {
+            lastException = Exception('HTTP ${response.statusCode}');
+          }
+        } catch (e) {
+          lastException = Exception('Request failed: $e');
+        }
+
+        // Wait before retrying (except on last attempt)
+        if (attempt < retries - 1) {
+          await Future.delayed(retryDelay);
+        }
+      }
+    }
+
+    throw lastException ?? Exception('All API keys and retry attempts failed');
   }
 
   static Future<Map<String, dynamic>> getTvShowsByProvider(
@@ -98,9 +185,16 @@ class ExploreTvApi {
 
   // Get TV show details from TMDB
   static Future<Map<String, dynamic>> getTvShowDetails(int showId) async {
+    final cacheKey = '$showDetailsCachePrefix$showId';
+
     try {
       final url = '$tmdbBaseUrl/tv/$showId?api_key=$tmdbApiKey&language=en-US';
-
+      // Check cache first
+      final cachedData = await _getCachedData(cacheKey);
+      if (cachedData != null) {
+        print('Using cached show details for ID: $showId');
+        return cachedData;
+      }
       final response = await http
           .get(
             Uri.parse(url),

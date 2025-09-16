@@ -8,6 +8,7 @@ import 'package:soyo/Services/downloadManager.dart';
 import 'package:soyo/Services/exploreapi.dart';
 import 'package:soyo/Services/m3u8api.dart';
 import 'package:soyo/Screens/playerScreen.dart';
+import 'package:soyo/Services/streams_cacher.dart';
 import 'package:soyo/models/moviemodel.dart';
 import 'package:soyo/models/savedmoviesmodel.dart';
 
@@ -33,6 +34,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   late Animation<double> _fadeAnimation;
   Map<String, dynamic>? _movieDetails;
   bool _isLoadingDetails = false;
+
+  bool _isUsingCache = false;
 
   bool _isSaved = false;
   late AnimationController _saveAnimationController;
@@ -83,6 +86,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     _trailerController = VideoPlayerController.network(
       'https://example.com/dummy.mp4',
     );
+    StreamCacheService.clearExpiredCache();
   }
 
   @override
@@ -220,22 +224,43 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   Future<void> _fetchStreamForDownload() async {
     setState(() {
       _isFetching = true;
+      _isUsingCache = false;
     });
 
     try {
+      // Try to get cached result first
+      final cachedResult = await StreamCacheService.getCachedStreamResult(
+        widget.movie.title,
+      );
+
+      if (cachedResult != null) {
+        setState(() {
+          _streamResult = cachedResult;
+          _isFetching = false;
+          _isUsingCache = true;
+        });
+        return;
+      }
+
+      // If no cache, fetch from server
       final result = await _api.searchMovie(
         movieName: widget.movie.title,
         quality: '1080',
         fetchSubs: true,
       );
 
+      // Cache the result
+      await StreamCacheService.cacheStreamResult(widget.movie.title, result);
+
       setState(() {
         _streamResult = result;
         _isFetching = false;
+        _isUsingCache = false;
       });
     } catch (e) {
       setState(() {
         _isFetching = false;
+        _isUsingCache = false;
       });
       throw e;
     }
@@ -286,28 +311,77 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   void _fetchStream() async {
     setState(() {
       _isFetching = true;
+      _isUsingCache = false;
     });
 
     try {
-      final result = await _api.searchMovie(
-        movieName: widget.movie.title,
-        quality: '1080',
-        fetchSubs: true,
+      // Try to get cached result first
+      final cachedResult = await StreamCacheService.getCachedStreamResult(
+        widget.movie.title,
       );
 
-      setState(() {
-        _streamResult = result;
-        _isFetching = false;
-      });
+      Map<String, dynamic> result;
+
+      if (cachedResult != null) {
+        result = cachedResult;
+        setState(() {
+          _streamResult = result;
+          _isFetching = false;
+          _isUsingCache = true;
+        });
+
+        // Show cache indicator
+        _showCacheSnackBar('Using cached stream link ⚡');
+      } else {
+        // If no cache, fetch from server
+        result = await _api.searchMovie(
+          movieName: widget.movie.title,
+          quality: '1080',
+          fetchSubs: true,
+        );
+
+        // Cache the result
+        await StreamCacheService.cacheStreamResult(widget.movie.title, result);
+
+        setState(() {
+          _streamResult = result;
+          _isFetching = false;
+          _isUsingCache = false;
+        });
+      }
 
       _playMovie(result);
     } catch (e) {
       setState(() {
         _isFetching = false;
+        _isUsingCache = false;
       });
 
       _showErrorSnackBar('Failed to fetch stream: $e');
     }
+  }
+
+  void _showCacheSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.flash_on, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                message,
+                style: GoogleFonts.nunito(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.orange.shade700,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   void _playMovie(Map<String, dynamic> result) {

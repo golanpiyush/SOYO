@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:soyo/Services/exploretvapi.dart';
 import 'package:soyo/Services/m3u8api.dart';
 import 'package:soyo/Screens/playerScreen.dart';
+import 'package:soyo/Services/streams_cacher.dart';
 import 'package:soyo/models/tvshowsmodel.dart';
 import 'package:soyo/widget/custom_dropdown_tv.dart';
 
@@ -107,6 +108,23 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
     });
 
     try {
+      // Check cache first
+      final cachedResult = await StreamCacheService.getCachedTvShowStreamResult(
+        widget.show.id,
+        _selectedSeason,
+        _selectedEpisode,
+      );
+
+      if (cachedResult != null) {
+        setState(() {
+          _streamResult = cachedResult;
+          _isFetching = false;
+        });
+        _playEpisode(cachedResult);
+        return;
+      }
+
+      // If no cache, fetch from API
       final result = await _api.searchTvShowByTmdbId(
         tmdbId: widget.show.id,
         season: _selectedSeason,
@@ -114,9 +132,16 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
         quality: '1080',
         fetchSubs: true,
         onStatusUpdate: (status) {
-          // You can show status updates if needed
           print('Search status: $status');
         },
+      );
+
+      // Cache the result
+      await StreamCacheService.cacheTvShowStreamResult(
+        widget.show.id,
+        _selectedSeason,
+        _selectedEpisode,
+        result,
       );
 
       setState(() {

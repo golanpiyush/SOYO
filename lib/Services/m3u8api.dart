@@ -41,6 +41,27 @@ class M3U8Api {
     }
   }
 
+  // Add this method to your M3U8Api class
+  Future<Map<String, dynamic>> searchAnime({
+    required String animeName,
+    String quality = '1080',
+    bool fetchSubs = false,
+  }) async {
+    // Similar implementation to searchMovie but for anime
+    // You'll need to adapt this based on your actual API endpoint
+    // This is just a placeholder structure
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/search/anime?name=$animeName&quality=$quality'),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to search anime');
+    }
+  }
+
   // In M3U8Api class
   Future<List<dynamic>> searchMultipleMovies(String query) async {
     final response = await http.post(
