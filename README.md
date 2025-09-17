@@ -66,7 +66,7 @@ The app integrates with multiple APIs for comprehensive content discovery:
 1. **Clone the repository**
    ```bash
    git clone https://github.com/golanpiyush/SOYO.git
-   cd soyo-stream
+   cd SOYO
    ```
 
 2. **Install dependencies**
