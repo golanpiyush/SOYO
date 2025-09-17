@@ -10,12 +10,11 @@
   [![Stars](https://img.shields.io/github/stars/golanpiyush/SOYO?style=social)](https://github.com/golanpiyush/SOYO/stargazers)
 
 ## 🌐 API Status
-
 | Service      | Status |
 |-------------|--------|
-| 🎥 Movies   | ![Movies API](https://img.shields.io/website?url=https%3A%2F%2Fdb.cineby.app%2F3&label=Movies%20API&style=flat-square&up_message=buildpassing&down_message=buildfailing&logo=movie) |
-| 📺 TV Shows | ![TV Shows API](https://img.shields.io/website?url=https%3A%2F%2Fcinemaos.me&label=TV%20API&style=flat-square&up_message=buildpassing&down_message=buildfailing&logo=television) |
-| 🎌 Anime    | ![Anime API](https://img.shields.io/website?url=https%3A%2F%2Fflixer.su&label=Anime%20API&style=flat-square&up_message=buildpassing&down_message=buildfailing&logo=anilist) |
+| 🎥 Movies   | ![Movies API](https://img.shields.io/website?url=https%3A%2F%2Fdb.cineby.app%2F3&label=Movies%20API&style=flat-square&up_message=buildpassing✅&down_message=buildfailing❌&logo=movie) |
+| 📺 TV Shows | ![TV Shows API](https://img.shields.io/website?url=https%3A%2F%2Fcinemaos.me&label=TV%20API&style=flat-square&up_message=buildpassing✅&down_message=buildfailing❌&logo=television) |
+| 🎌 Anime    | ![Anime API](https://img.shields.io/website?url=https%3A%2F%2Fflixer.su&label=Anime%20API&style=flat-square&up_message=buildpassing✅&down_message=buildfailing❌&logo=anilist) |
 
 
 </div>
