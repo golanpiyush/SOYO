@@ -19,7 +19,7 @@
 | 🔞 Adult Content | ![Adult API](https://img.shields.io/website?url=https%3A%2F%2Fxhamster44.desi&label=Adult%20API&style=flat-square&up_message=buildpassing✅&down_message=buildfailing❌&logo=fire) |
 
 
-⚠️ _The private scraping server (hosted locally) may not always be accessible._
+⚠️ _The private scraping server (hosted locally) may not always be accessible._ 🪲
 
 </div>
 
