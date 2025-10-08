@@ -18,9 +18,8 @@
 | 🎌 Anime      | ![Anime API](https://img.shields.io/website?url=https%3A%2F%2Fflixer.su&label=Anime%20API&style=flat-square&up_message=buildpassing✅&down_message=buildfailing❌&logo=anilist) |
 | 🔞 Adult Content | ![Adult API](https://img.shields.io/website?url=https%3A%2F%2Fxhamster44.desi&label=Adult%20API&style=flat-square&up_message=buildpassing✅&down_message=buildfailing❌&logo=fire) |
 
-![Private Scraping Server](https://img.shields.io/website?url=https%3A%2F%2F0nnf7qzl-5000.inc1.devtunnels.ms&label=Private%20Scraping%20Server&style=flat-square&up_message=Online✅&down_message=Offline❌&logo=server)
 
-_The private scraping server (hosted locally) may not always be accessible._
+⚠️_The private scraping server (hosted locally) may not always be accessible._
 
 </div>
 
