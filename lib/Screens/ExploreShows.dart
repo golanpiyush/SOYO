@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:soyo/Screens/provider_shows.dart';
@@ -22,7 +24,11 @@ class _ExploreShowsState extends State<ExploreShows>
 
   bool isLoading = true;
   String errorMessage = '';
-
+  TextEditingController _searchController = TextEditingController();
+  List<TvShow> _searchResults = [];
+  bool _isSearching = false;
+  String _searchQuery = '';
+  Timer? _searchDebounce;
   late AnimationController _fadeController;
   late AnimationController _slideController;
   late AnimationController _scaleController;
@@ -38,6 +44,7 @@ class _ExploreShowsState extends State<ExploreShows>
     super.initState();
     _initAnimations();
     _fetchAllData();
+    _searchController.addListener(_onSearchChanged);
   }
 
   void _initAnimations() {
@@ -85,7 +92,78 @@ class _ExploreShowsState extends State<ExploreShows>
     _slideController.dispose();
     _scaleController.dispose();
     _shimmerController.dispose();
+    _searchController.dispose();
+    _searchDebounce?.cancel();
     super.dispose();
+  }
+
+  void _onSearchChanged() {
+    final query = _searchController.text.trim();
+
+    _searchDebounce?.cancel();
+
+    if (query.isEmpty) {
+      setState(() {
+        _isSearching = false;
+        _searchQuery = '';
+        _searchResults.clear();
+      });
+    } else {
+      _searchDebounce = Timer(const Duration(milliseconds: 500), () {
+        if (query != _searchQuery) {
+          setState(() {
+            _searchQuery = query;
+            _isSearching = true;
+          });
+          _performSearch(query);
+        }
+      });
+    }
+  }
+
+  Future<void> _performSearch(String query) async {
+    try {
+      setState(() {
+        _isSearching = true;
+      });
+
+      // Use TMDB search API to search all TV shows
+      final searchResult = await ExploreTvApi.searchTvShows(
+        query,
+        page: 1,
+        useCache: false,
+      );
+
+      final results = (searchResult['results'] as List)
+          .map((show) => TvShow.fromJson(show))
+          .toList();
+
+      // Remove duplicates based on show ID
+      final uniqueResults = <int, TvShow>{};
+      for (var show in results) {
+        uniqueResults[show.id] = show;
+      }
+
+      setState(() {
+        _searchResults = uniqueResults.values.toList();
+        _isSearching = false;
+      });
+    } catch (e) {
+      print('Search error: $e');
+      setState(() {
+        _searchResults = [];
+        _isSearching = false;
+      });
+    }
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    setState(() {
+      _isSearching = false;
+      _searchQuery = '';
+      _searchResults.clear();
+    });
   }
 
   Future<void> _fetchAllData() async {
@@ -94,43 +172,49 @@ class _ExploreShowsState extends State<ExploreShows>
         isLoading = true;
       });
 
-      // Fetch all data in parallel
-      final results = await Future.wait([
-        ExploreTvApi.getNetflixTvShows(),
-        ExploreTvApi.getAppleTvShows(),
-        ExploreTvApi.getPrimeVideoShows(),
-        ExploreTvApi.getDisneyShows(),
-        ExploreTvApi.getHboMaxShows(),
-        ExploreTvApi.getHuluShows(),
-        ExploreTvApi.getParamountShows(),
+      // Check cache first for all providers
+      final cacheResults = await Future.wait([
+        _checkCacheAndLoad('Netflix', () => ExploreTvApi.getNetflixTvShows()),
+        _checkCacheAndLoad('Apple TV', () => ExploreTvApi.getAppleTvShows()),
+        _checkCacheAndLoad(
+          'Prime Video',
+          () => ExploreTvApi.getPrimeVideoShows(),
+        ),
+        _checkCacheAndLoad('Disney+', () => ExploreTvApi.getDisneyShows()),
+        _checkCacheAndLoad('HBO Max', () => ExploreTvApi.getHboMaxShows()),
+        _checkCacheAndLoad('Hulu', () => ExploreTvApi.getHuluShows()),
+        _checkCacheAndLoad(
+          'Paramount+',
+          () => ExploreTvApi.getParamountShows(),
+        ),
       ]);
 
       setState(() {
-        netflixShows = (results[0]['results'] as List)
+        netflixShows = (cacheResults[0]['results'] as List)
             .map((show) => TvShow.fromJson(show))
             .toList();
 
-        appleTvShows = (results[1]['results'] as List)
+        appleTvShows = (cacheResults[1]['results'] as List)
             .map((show) => TvShow.fromJson(show))
             .toList();
 
-        primeVideoShows = (results[2]['results'] as List)
+        primeVideoShows = (cacheResults[2]['results'] as List)
             .map((show) => TvShow.fromJson(show))
             .toList();
 
-        disneyShows = (results[3]['results'] as List)
+        disneyShows = (cacheResults[3]['results'] as List)
             .map((show) => TvShow.fromJson(show))
             .toList();
 
-        hboMaxShows = (results[4]['results'] as List)
+        hboMaxShows = (cacheResults[4]['results'] as List)
             .map((show) => TvShow.fromJson(show))
             .toList();
 
-        huluShows = (results[5]['results'] as List)
+        huluShows = (cacheResults[5]['results'] as List)
             .map((show) => TvShow.fromJson(show))
             .toList();
 
-        paramountShows = (results[6]['results'] as List)
+        paramountShows = (cacheResults[6]['results'] as List)
             .map((show) => TvShow.fromJson(show))
             .toList();
 
@@ -146,6 +230,23 @@ class _ExploreShowsState extends State<ExploreShows>
         errorMessage = 'Failed to load data: $e';
         isLoading = false;
       });
+    }
+  }
+
+  // Helper method to check cache first, then fallback to API
+  Future<Map<String, dynamic>> _checkCacheAndLoad(
+    String providerName,
+    Future<Map<String, dynamic>> Function() apiCall,
+  ) async {
+    try {
+      // First try to get cached data
+      final cachedData =
+          await apiCall(); // This will automatically check cache first due to useCache: true
+      return cachedData;
+    } catch (e) {
+      print('Failed to load $providerName shows: $e');
+      // Return empty result structure if both cache and API fail
+      return {'results': [], 'total_pages': 0, 'total_results': 0, 'page': 1};
     }
   }
 
@@ -181,6 +282,149 @@ class _ExploreShowsState extends State<ExploreShows>
     );
   }
 
+  Widget _buildSearchBar() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.blue.withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: TextField(
+        controller: _searchController,
+        style: GoogleFonts.nunito(color: Colors.white),
+        decoration: InputDecoration(
+          hintText: 'Search all providers...',
+          hintStyle: GoogleFonts.nunito(
+            color: Colors.white.withOpacity(0.5),
+            fontSize: 16,
+          ),
+          prefixIcon: Icon(Icons.search, color: Colors.white.withOpacity(0.7)),
+          suffixIcon: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_isSearching)
+                Container(
+                  width: 20,
+                  height: 20,
+                  margin: EdgeInsets.only(right: 8),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.blue,
+                  ),
+                ),
+              if (_searchController.text.isNotEmpty)
+                GestureDetector(
+                  onTap: _clearSearch,
+                  child: Icon(
+                    Icons.clear,
+                    color: Colors.white.withOpacity(0.7),
+                  ),
+                ),
+              SizedBox(width: 12),
+            ],
+          ),
+          filled: true,
+          fillColor: Colors.white.withOpacity(0.08),
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 14,
+            horizontal: 20,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(30),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(30),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(30),
+            borderSide: BorderSide(color: Colors.blue, width: 1.5),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchResults() {
+    if (_searchResults.isEmpty) {
+      return Center(
+        child: Container(
+          margin: EdgeInsets.all(30),
+          padding: EdgeInsets.all(30),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.1)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.search_off,
+                size: 60,
+                color: Colors.white.withOpacity(0.3),
+              ),
+              SizedBox(height: 20),
+              Text(
+                'No shows found for "$_searchQuery"',
+                style: GoogleFonts.nunito(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(20, 0, 20, 15),
+          child: Text(
+            '${_searchResults.length} results found',
+            style: GoogleFonts.nunito(
+              color: Colors.white.withOpacity(0.8),
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        Expanded(
+          child: GridView.builder(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              childAspectRatio: 0.7,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 20,
+            ),
+            itemCount: _searchResults.length,
+            itemBuilder: (context, index) {
+              return _buildShowCard(
+                _searchResults[index],
+                index,
+                _searchResults.length,
+                [Colors.blue.shade600, Colors.purple.shade600],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -202,11 +446,14 @@ class _ExploreShowsState extends State<ExploreShows>
           child: Column(
             children: [
               _buildAnimatedAppBar(),
+              _buildSearchBar(),
               Expanded(
                 child: isLoading
                     ? _buildShimmerLoading()
                     : errorMessage.isNotEmpty
                     ? _buildErrorState()
+                    : _searchQuery.isNotEmpty
+                    ? _buildSearchResults()
                     : _buildContent(),
               ),
             ],

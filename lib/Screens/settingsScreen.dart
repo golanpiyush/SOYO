@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:soyo/Services/Providers/settings_provider.dart';
 import 'package:soyo/Services/m3u8api.dart';
 import 'package:soyo/Services/streams_cacher.dart';
 import 'savedscreen.dart';
+import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SettingsScreen extends StatefulWidget {
   @override
@@ -13,14 +16,16 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _autoFetchSubtitles = true;
-  String _defaultQuality = '1080';
+  String _defaultQuality = 'Adaptive';
   bool _darkTheme = true;
-  bool _autoPlay = false;
+  bool _autoPlay = true;
   final M3U8Api _api = M3U8Api();
   bool _isTestingConnection = false;
   bool? _connectionStatus;
   bool _isClearingCache = false;
   String _cacheInfo = '';
+  bool _nsfwEnabled = false;
+  bool _immersiveMode = false;
   // Subtitle customization settings
   Color _subtitleBackgroundColor = Colors.black.withOpacity(0.7);
   Color _subtitleTextColor = Colors.yellow;
@@ -28,6 +33,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _subtitleFontFamily = 'Cinzel';
   bool _subtitleOutline = true;
   double _subtitleSpeed = 1.0;
+  bool _enableDoubleTapSeek = true;
+  bool _enableExtraVolume = false;
+  double _volumeBoostMultiplier = 1.0;
+  bool _resumeFromLastPosition = false; // Add this line
 
   // Cinematic fonts list
   final List<String> _cinematicFonts = [
@@ -44,12 +53,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
     'Spectral',
     'Old Standard TT',
   ];
-
+  static const platform = MethodChannel('com.soyo.audio/boost');
   @override
   void initState() {
     super.initState();
     _loadSubtitleSettings();
     _getCacheInfo();
+    _loadPlayerSettings();
+    _loadImmersiveMode();
+    _loadStreamingSettings();
+    _initAudioBoostIfEnabled();
+  }
+
+  Future<void> _loadImmersiveMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _immersiveMode = prefs.getBool('immersive_mode') ?? false;
+    });
+  }
+
+  Future<void> _saveImmersiveMode(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('immersive_mode', value);
+  }
+
+  Future<void> _loadPlayerSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _enableDoubleTapSeek = prefs.getBool('enable_double_tap_seek') ?? true;
+      _enableExtraVolume = prefs.getBool('enable_extra_volume') ?? false;
+      _volumeBoostMultiplier =
+          prefs.getDouble('volume_boost_multiplier') ?? 1.0;
+    });
+  }
+
+  // Update _savePlayerSettings
+  Future<void> _savePlayerSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('enable_double_tap_seek', _enableDoubleTapSeek);
+    await prefs.setBool('enable_extra_volume', _enableExtraVolume);
+    await prefs.setDouble('volume_boost_multiplier', _volumeBoostMultiplier);
   }
 
   Future<void> _getCacheInfo() async {
@@ -160,6 +203,64 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setDouble('subtitle_speed', _subtitleSpeed);
   }
 
+  // Add these methods to load and save the streaming settings
+  Future<void> _loadStreamingSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _autoFetchSubtitles = prefs.getBool('auto_fetch_subtitles') ?? true;
+      _autoPlay = prefs.getBool('auto_play') ?? true;
+      _defaultQuality = prefs.getString('default_quality') ?? 'Adaptive';
+      _resumeFromLastPosition =
+          prefs.getBool('resume_from_last_position') ?? false; // Add this line
+      _nsfwEnabled = prefs.getBool('nsfw_enabled') ?? false;
+    });
+  }
+
+  // Future<void> _saveStreamingSettings() async {
+  //   final prefs = await SharedPreferences.getInstance();
+  //   await prefs.setBool('auto_fetch_subtitles', _autoFetchSubtitles);
+  //   await prefs.setBool('auto_play', _autoPlay);
+  //   await prefs.setString('default_quality', _defaultQuality);
+  //   await prefs.setBool(
+  //     'resume_from_last_position',
+  //     _resumeFromLastPosition,
+  //   ); // Add this line
+  // }
+
+  // Future<void> _saveNSFWSettings(bool value) async {
+  //   final prefs = await SharedPreferences.getInstance();
+  //   await prefs.setBool('nsfw_enabled', value);
+  // }
+
+  Future<void> _initAudioBoostIfEnabled() async {
+    // Wait a bit for settings to load
+    await Future.delayed(Duration(milliseconds: 100));
+
+    if (_enableExtraVolume) {
+      try {
+        await platform.invokeMethod('initAudioBoost');
+        await platform.invokeMethod('setAudioBoost', {
+          'multiplier': _volumeBoostMultiplier,
+        });
+      } on PlatformException catch (e) {
+        print("Failed to initialize audio boost on startup: ${e.message}");
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    // Release audio boost when leaving settings
+    if (_enableExtraVolume) {
+      try {
+        platform.invokeMethod('releaseAudioBoost');
+      } catch (e) {
+        print("Failed to release audio boost: $e");
+      }
+    }
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -176,6 +277,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             _buildStreamingSection(),
             SizedBox(height: 20),
+            _buildPlayerControlsSection(), // Add this line
+            SizedBox(height: 20),
             _buildSubtitleEditorSection(),
             SizedBox(height: 20),
             _buildCacheSection(),
@@ -188,6 +291,296 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildPlayerControlsSection() {
+    return Container(
+      padding: EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.grey[900],
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.grey[800]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.touch_app, color: Colors.blue),
+              SizedBox(width: 12),
+              Text(
+                'Player Controls',
+                style: GoogleFonts.cabin(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 15),
+
+          // Immersive Mode
+          _buildSwitchSetting(
+            'Immersive Mode',
+            'Hide all system UI (notification bar & navigation)',
+            _immersiveMode,
+            (value) async {
+              setState(() => _immersiveMode = value);
+              await _saveImmersiveMode(value);
+
+              // Apply immediately
+              if (value) {
+                SystemChrome.setEnabledSystemUIMode(
+                  SystemUiMode.immersive,
+                  overlays: [],
+                );
+              } else {
+                SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+              }
+            },
+            Icons.fullscreen,
+          ),
+          SizedBox(height: 20),
+
+          // Double tap to seek
+          _buildSwitchSetting(
+            'Double Tap to Seek',
+            'Tap left/right 30% of screen to seek ±5 seconds',
+            _enableDoubleTapSeek,
+            (value) {
+              setState(() => _enableDoubleTapSeek = value);
+              _savePlayerSettings();
+            },
+            Icons.fast_forward,
+          ),
+
+          SizedBox(height: 15),
+
+          // Extra volume boost
+          _buildSwitchSetting(
+            'Extra Volume Boost',
+            'Enable volume beyond 100%',
+            _enableExtraVolume,
+            (value) async {
+              setState(() => _enableExtraVolume = value);
+              await _savePlayerSettings();
+
+              // Initialize or release audio boost
+              try {
+                if (value) {
+                  await platform.invokeMethod('initAudioBoost');
+                  await platform.invokeMethod('setAudioBoost', {
+                    'multiplier': _volumeBoostMultiplier,
+                  });
+                } else {
+                  await platform.invokeMethod('setAudioBoost', {
+                    'multiplier': 1.0,
+                  });
+                }
+              } on PlatformException catch (e) {
+                print("Failed to toggle audio boost: ${e.message}");
+
+                // Show error to user
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Failed to apply volume boost: ${e.message}',
+                      ),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            Icons.volume_up,
+          ),
+
+          // Volume boost slider (only show when enabled)
+          if (_enableExtraVolume) ...[
+            SizedBox(height: 15),
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.graphic_eq, color: Colors.white70, size: 20),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Volume Boost Level',
+                          style: GoogleFonts.cabin(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '${(_volumeBoostMultiplier * 100).round()}%',
+                        style: GoogleFonts.cabin(
+                          color: _getBoostColor(_volumeBoostMultiplier),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 8),
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      activeTrackColor: Colors.yellow,
+                      inactiveTrackColor: Colors.grey[700],
+                      thumbColor: Colors.yellow,
+                      overlayColor: Colors.yellow.withOpacity(0.2),
+                      trackHeight: 6,
+                    ),
+                    child: Slider(
+                      value: _volumeBoostMultiplier,
+                      min: 1.0,
+                      max: 2.0,
+                      divisions: 2,
+                      label: '${(_volumeBoostMultiplier * 100).round()}%',
+                      onChanged: (value) async {
+                        // Snap to discrete values: 1.0, 1.5, or 2.0
+                        double snappedValue;
+                        if (value < 1.25) {
+                          snappedValue = 1.0;
+                        } else if (value < 1.75) {
+                          snappedValue = 1.5;
+                        } else {
+                          snappedValue = 2.0;
+                        }
+
+                        setState(() => _volumeBoostMultiplier = snappedValue);
+                        await _savePlayerSettings();
+
+                        // Apply boost immediately if enabled
+                        if (_enableExtraVolume) {
+                          try {
+                            await platform.invokeMethod('setAudioBoost', {
+                              'multiplier': snappedValue,
+                            });
+                          } on PlatformException catch (e) {
+                            print(
+                              "Failed to set audio boost from settings: ${e.message}",
+                            );
+                          }
+                        }
+                      },
+                    ),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '100%',
+                        style: GoogleFonts.cabin(
+                          color: Colors.grey[500],
+                          fontSize: 11,
+                        ),
+                      ),
+                      Text(
+                        '150%',
+                        style: GoogleFonts.cabin(
+                          color: Colors.grey[500],
+                          fontSize: 11,
+                        ),
+                      ),
+                      Text(
+                        '200%',
+                        style: GoogleFonts.cabin(
+                          color: Colors.grey[500],
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        color: Colors.yellow[700],
+                        size: 16,
+                      ),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'May affect audio quality at higher levels',
+                          style: GoogleFonts.cabin(
+                            color: Colors.grey[400],
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_volumeBoostMultiplier >= 1.5) ...[
+                    SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.error_outline,
+                          color: Colors.redAccent,
+                          size: 16,
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'High boost levels may damage speakers or hearing!',
+                            style: GoogleFonts.cabin(
+                              color: const Color.fromARGB(255, 229, 255, 82),
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  if (_volumeBoostMultiplier == 2.0) ...[
+                    SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.error_outline,
+                          color: Colors.redAccent,
+                          size: 16,
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'FUCK!',
+                            style: GoogleFonts.cabin(
+                              color: Colors.redAccent,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Color _getBoostColor(double multiplier) {
+    if (multiplier <= 1.0) return Colors.white; // 100%
+    if (multiplier <= 1.5) return Colors.yellow; // 150%
+    return Colors.redAccent; // 200%
   }
 
   Widget _buildCacheSection() {
@@ -912,9 +1305,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // Default Quality
           _buildDropdownSetting(
             'Default Quality',
-            _defaultQuality,
-            ['720', '1080', '4K'],
-            (value) => setState(() => _defaultQuality = value!),
+            context.watch<SettingsProvider>().defaultQuality,
+            ['Lower Bitrate', 'Adaptive'],
+            (value) {
+              if (value != null) {
+                context.read<SettingsProvider>().setDefaultQuality(value);
+              }
+            },
             Icons.hd,
           ),
 
@@ -924,20 +1321,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildSwitchSetting(
             'Auto Fetch Subtitles',
             'Automatically download subtitles when available',
-            _autoFetchSubtitles,
-            (value) => setState(() => _autoFetchSubtitles = value),
+            context.watch<SettingsProvider>().autoFetchSubtitles,
+            (value) {
+              context.read<SettingsProvider>().setAutoFetchSubtitles(value);
+            },
             Icons.subtitles,
           ),
-
           SizedBox(height: 15),
-
-          // Auto play
           _buildSwitchSetting(
             'Auto Play',
             'Automatically open video player after finding stream',
-            _autoPlay,
-            (value) => setState(() => _autoPlay = value),
+            context.watch<SettingsProvider>().autoPlay,
+            (value) {
+              context.read<SettingsProvider>().setAutoPlay(value);
+            },
             Icons.play_arrow,
+          ),
+
+          SizedBox(height: 15), // Add this spacing
+          // Resume from last position
+          _buildSwitchSetting(
+            'Resume from Last Position',
+            'Always continue from where you left off',
+            context.watch<SettingsProvider>().resumeFromLastPosition,
+            (value) {
+              context.read<SettingsProvider>().setResumeFromLastPosition(value);
+            },
+            Icons.replay_circle_filled,
+          ),
+          SizedBox(height: 15),
+
+          // NSFW Content Toggle
+          _buildSwitchSetting(
+            'NSFW Content',
+            'Show adult/NSFW content in the app',
+            context.watch<SettingsProvider>().nsfwEnabled,
+            (value) async {
+              await context.read<SettingsProvider>().setNsfwEnabled(value);
+
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      value ? 'NSFW content enabled' : 'NSFW content disabled',
+                    ),
+                    backgroundColor: value ? Colors.green : Colors.orange,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+            Icons.warning_rounded,
           ),
         ],
       ),
@@ -971,9 +1405,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           SizedBox(height: 20),
 
-          _buildInfoRow('App Version', '2.2.0'),
-          _buildInfoRow('Developer', 'Piyush Golan'),
-          _buildInfoRow('API Version', 'v2.5'),
+          _buildInfoRow('App Version', '2.5.0'),
+          GestureDetector(
+            onTap: _launchGitHub,
+            child: Container(
+              padding: EdgeInsets.only(bottom: 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Developer',
+                      style: GoogleFonts.cabin(
+                        color: Colors.grey[400],
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      Text(
+                        'Piyush Golan',
+                        style: GoogleFonts.cabin(
+                          color: Colors.blue,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                      SizedBox(width: 6),
+                      Icon(Icons.open_in_new, color: Colors.blue, size: 16),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          _buildInfoRow('API Version', 'v2.8'),
 
           SizedBox(height: 20),
 
@@ -1095,6 +1562,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _launchGitHub() async {
+    final Uri url = Uri.parse('https://github.com/golanpiyush/SOYO');
+    try {
+      if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Could not open GitHub page'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening GitHub: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildInfoRow(String label, String value) {

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:soyo/Screens/ExploreShows.dart';
@@ -52,11 +54,21 @@ class _ExploreScreenState extends State<ExploreScreen>
   late Animation<Offset> _slideAnimation;
   late Animation<double> _scaleAnimation;
   late Animation<double> _shimmerAnimation;
+  TextEditingController _searchController = TextEditingController();
+  List<Movie> _searchResults = [];
+  bool _isSearchActive = false;
+  String _searchQuery = '';
+  Timer? _searchDebounce;
+  // Add these new variables for progressive loading
+  int _loadedSections = 0;
+  final int _totalSections = 22; // Total number of sections
+  bool _isLoadingMore = false;
 
   @override
   void initState() {
     super.initState();
     _initAnimations();
+    _searchController.addListener(_onSearchChanged);
     _fetchAllData();
   }
 
@@ -105,146 +117,400 @@ class _ExploreScreenState extends State<ExploreScreen>
     _slideController.dispose();
     _scaleController.dispose();
     _shimmerController.dispose();
+    _searchController.dispose();
+    _searchDebounce?.cancel();
     super.dispose();
+  }
+
+  void _onSearchChanged() {
+    final query = _searchController.text.trim();
+
+    // Cancel previous timer
+    _searchDebounce?.cancel();
+
+    if (query.isEmpty) {
+      setState(() {
+        _isSearchActive = false;
+        _searchQuery = '';
+        _searchResults.clear();
+      });
+    } else {
+      // Set loading state immediately
+      setState(() {
+        _isSearchActive = true;
+      });
+
+      // Set a debounce timer - wait 500ms after user stops typing
+      _searchDebounce = Timer(const Duration(milliseconds: 500), () {
+        setState(() {
+          _searchQuery = query;
+        });
+        _performMovieSearch(query);
+      });
+    }
+  }
+
+  Future<void> _performMovieSearch(String query) async {
+    try {
+      // Don't set isSearchActive here since it's already set in _onSearchChanged
+
+      // Use TMDB search API
+      final searchResult = await ExploreApi.searchMovies(query, page: 1);
+
+      final results = (searchResult['results'] as List)
+          .map((movie) => Movie.fromJson(movie))
+          .toList();
+
+      setState(() {
+        _searchResults = results;
+        _isSearchActive = false; // Stop loading after results arrive
+      });
+    } catch (e) {
+      print('Search error: $e');
+      setState(() {
+        _searchResults = [];
+        _isSearchActive = false;
+      });
+    }
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    setState(() {
+      _isSearchActive = false;
+      _searchQuery = '';
+      _searchResults.clear();
+    });
+  }
+
+  Widget _buildSearchBar() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.red.withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: TextField(
+        controller: _searchController,
+        style: GoogleFonts.nunito(color: Colors.white),
+        decoration: InputDecoration(
+          hintText: 'Search movies...',
+          hintStyle: GoogleFonts.nunito(
+            color: Colors.white.withOpacity(0.5),
+            fontSize: 16,
+          ),
+          prefixIcon: Icon(Icons.search, color: Colors.white.withOpacity(0.7)),
+          suffixIcon: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_isSearchActive)
+                Container(
+                  width: 20,
+                  height: 20,
+                  margin: EdgeInsets.only(right: 8),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.red,
+                  ),
+                ),
+              if (_searchController.text.isNotEmpty)
+                GestureDetector(
+                  onTap: _clearSearch,
+                  child: Icon(
+                    Icons.clear,
+                    color: Colors.white.withOpacity(0.7),
+                  ),
+                ),
+              SizedBox(width: 12),
+            ],
+          ),
+          filled: true,
+          fillColor: Colors.white.withOpacity(0.08),
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 14,
+            horizontal: 20,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(30),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(30),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(30),
+            borderSide: BorderSide(color: Colors.red, width: 1.5),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchResults() {
+    if (_searchResults.isEmpty && !_isSearchActive) {
+      return Center(
+        child: Container(
+          margin: EdgeInsets.all(30),
+          padding: EdgeInsets.all(30),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.1)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.search_off,
+                size: 60,
+                color: Colors.white.withOpacity(0.3),
+              ),
+              SizedBox(height: 20),
+              Text(
+                'No movies found for "$_searchQuery"',
+                style: GoogleFonts.nunito(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(20, 0, 20, 15),
+          child: Text(
+            '${_searchResults.length} results found',
+            style: GoogleFonts.nunito(
+              color: Colors.white.withOpacity(0.8),
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        Expanded(
+          child: GridView.builder(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              childAspectRatio: 0.7,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 20,
+            ),
+            itemCount: _searchResults.length,
+            itemBuilder: (context, index) {
+              return _buildMovieCard(
+                _searchResults[index],
+                index,
+                _searchResults.length,
+                [Colors.red, Colors.deepOrange],
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 
   Future<void> _fetchAllData() async {
     try {
       setState(() {
         isLoading = true;
+        errorMessage = '';
+        _loadedSections = 0;
       });
 
-      // Fetch all data in parallel - add new genres to the list
-      final results = await Future.wait([
-        ExploreApi.getUpcomingMovies(), // results[0]
-        ExploreApi.getPopularMovies(), // results[1]
-        ExploreApi.getTopRatedMovies(), // results[2]
-        ExploreApi.getMoviesByGenre(27), // results[3] - Horror
-        ExploreApi.getMoviesByGenre(28), // results[4] - Action
-        ExploreApi.getMoviesByGenre(878), // results[5] - Sci-Fi
-        ExploreApi.getMoviesByGenre(35), // results[6] - Comedy
-        ExploreApi.getMoviesByGenre(53), // results[7] - Thriller
-        ExploreApi.getMoviesByGenre(10770), // results[8] - TV Movie
-        ExploreApi.getMoviesByGenre(9648), // results[9] - Mystery
-        ExploreApi.getMoviesByGenre(80), // results[10] - Crime
-        ExploreApi.getMoviesByGenre(16), // results[11] - Animation
-        ExploreApi.getMoviesByGenre(12), // results[12] - Adventure
-        // Add new genres here:
-        ExploreApi.getMoviesByGenre(18), // results[13] - Drama
-        ExploreApi.getMoviesByGenre(14), // results[14] - Fantasy
-        ExploreApi.getMoviesByGenre(10749), // results[15] - Romance
-        ExploreApi.getMoviesByGenre(10751), // results[16] - Family
-        ExploreApi.getMoviesByGenre(99), // results[17] - Documentary
-        ExploreApi.getMoviesByGenre(36), // results[18] - History
-        ExploreApi.getMoviesByGenre(10752), // results[19] - War
-        ExploreApi.getMoviesByGenre(37), // results[20] - Western
-        ExploreApi.getMoviesByGenre(10402), // results[21] - Music
-      ]);
+      // Load main categories first
+      final upcoming = await ExploreApi.getUpcomingMovies();
+      final popular = await ExploreApi.getPopularMovies();
+      final topRated = await ExploreApi.getTopRatedMovies();
 
       setState(() {
-        // Fix the index assignments to match the Future.wait order
-        upcomingMovies = (results[0]['results'] as List)
+        upcomingMovies = (upcoming['results'] as List)
+            .map((movie) => Movie.fromJson(movie))
+            .toList();
+        popularMovies = (popular['results'] as List)
+            .map((movie) => Movie.fromJson(movie))
+            .toList();
+        topRatedMovies = (topRated['results'] as List)
             .map((movie) => Movie.fromJson(movie))
             .toList();
 
-        popularMovies = (results[1]['results'] as List)
-            .map((movie) => Movie.fromJson(movie))
-            .toList();
-
-        topRatedMovies = (results[2]['results'] as List)
-            .map((movie) => Movie.fromJson(movie))
-            .toList();
-
-        horrorMovies = (results[3]['results'] as List)
-            .map((movie) => Movie.fromJson(movie))
-            .toList();
-
-        actionMovies = (results[4]['results'] as List)
-            .map((movie) => Movie.fromJson(movie))
-            .toList();
-
-        scifiMovies = (results[5]['results'] as List)
-            .map((movie) => Movie.fromJson(movie))
-            .toList();
-
-        comedyMovies = (results[6]['results'] as List)
-            .map((movie) => Movie.fromJson(movie))
-            .toList();
-
-        thrillerMovies = (results[7]['results'] as List)
-            .map((movie) => Movie.fromJson(movie))
-            .toList();
-
-        tvMovieMovies = (results[8]['results'] as List)
-            .map((movie) => Movie.fromJson(movie))
-            .toList();
-
-        mysteryMovies = (results[9]['results'] as List)
-            .map((movie) => Movie.fromJson(movie))
-            .toList();
-
-        crimeMovies = (results[10]['results'] as List)
-            .map((movie) => Movie.fromJson(movie))
-            .toList();
-
-        animationMovies = (results[11]['results'] as List)
-            .map((movie) => Movie.fromJson(movie))
-            .toList();
-
-        adventureMovies = (results[12]['results'] as List)
-            .map((movie) => Movie.fromJson(movie))
-            .toList();
-
-        // Add new genres mapping here with correct indices:
-        dramaMovies = (results[13]['results'] as List)
-            .map((movie) => Movie.fromJson(movie))
-            .toList();
-
-        fantasyMovies = (results[14]['results'] as List)
-            .map((movie) => Movie.fromJson(movie))
-            .toList();
-
-        romanceMovies = (results[15]['results'] as List)
-            .map((movie) => Movie.fromJson(movie))
-            .toList();
-
-        familyMovies = (results[16]['results'] as List)
-            .map((movie) => Movie.fromJson(movie))
-            .toList();
-
-        documentaryMovies = (results[17]['results'] as List)
-            .map((movie) => Movie.fromJson(movie))
-            .toList();
-
-        historyMovies = (results[18]['results'] as List)
-            .map((movie) => Movie.fromJson(movie))
-            .toList();
-
-        warMovies = (results[19]['results'] as List)
-            .map((movie) => Movie.fromJson(movie))
-            .toList();
-
-        westernMovies = (results[20]['results'] as List)
-            .map((movie) => Movie.fromJson(movie))
-            .toList();
-
-        musicMovies = (results[21]['results'] as List)
-            .map((movie) => Movie.fromJson(movie))
-            .toList();
-
-        isLoading = false;
+        _loadedSections = 3;
+        isLoading = false; // Show UI immediately with first 3 sections
       });
 
-      // Trigger animations after data loads
+      // Trigger animations
       _fadeController.forward();
       _slideController.forward();
       _scaleController.forward();
+
+      // Load genres progressively in background
+      _loadGenresProgressively();
     } catch (e) {
       setState(() {
         errorMessage =
-            'Failed to load data: ⚠️ API ERROR DETECTED! Contact Developer...';
+            'Failed to load data. Please check your connection and try again.';
         isLoading = false;
       });
+      print('Error in _fetchAllData: $e');
+    }
+  }
+
+  Future<void> _loadGenresProgressively() async {
+    final genreConfigs = [
+      {'id': 27, 'setter': (List<Movie> movies) => horrorMovies = movies},
+      {'id': 28, 'setter': (List<Movie> movies) => actionMovies = movies},
+      {'id': 878, 'setter': (List<Movie> movies) => scifiMovies = movies},
+      {'id': 35, 'setter': (List<Movie> movies) => comedyMovies = movies},
+      {'id': 53, 'setter': (List<Movie> movies) => thrillerMovies = movies},
+      {'id': 10770, 'setter': (List<Movie> movies) => tvMovieMovies = movies},
+      {'id': 9648, 'setter': (List<Movie> movies) => mysteryMovies = movies},
+      {'id': 80, 'setter': (List<Movie> movies) => crimeMovies = movies},
+      {'id': 16, 'setter': (List<Movie> movies) => animationMovies = movies},
+      {'id': 12, 'setter': (List<Movie> movies) => adventureMovies = movies},
+      {'id': 18, 'setter': (List<Movie> movies) => dramaMovies = movies},
+      {'id': 14, 'setter': (List<Movie> movies) => fantasyMovies = movies},
+      {'id': 10749, 'setter': (List<Movie> movies) => romanceMovies = movies},
+      {'id': 10751, 'setter': (List<Movie> movies) => familyMovies = movies},
+      {'id': 99, 'setter': (List<Movie> movies) => documentaryMovies = movies},
+      {'id': 36, 'setter': (List<Movie> movies) => historyMovies = movies},
+      {'id': 10752, 'setter': (List<Movie> movies) => warMovies = movies},
+      {'id': 37, 'setter': (List<Movie> movies) => westernMovies = movies},
+      {'id': 10402, 'setter': (List<Movie> movies) => musicMovies = movies},
+    ];
+
+    for (var config in genreConfigs) {
+      try {
+        final result = await ExploreApi.getMoviesByGenre(config['id'] as int);
+        final movies = _safeParseMovies(result);
+
+        setState(() {
+          (config['setter'] as Function)(movies);
+          _loadedSections++;
+        });
+
+        // Small delay between loads to keep UI responsive
+        await Future.delayed(Duration(milliseconds: 300));
+      } catch (e) {
+        print('Error loading genre ${config['id']}: $e');
+        setState(() {
+          (config['setter'] as Function)(<Movie>[]);
+          _loadedSections++;
+        });
+      }
+    }
+  }
+
+  // Helper method to safely parse movies from API result
+  List<Movie> _safeParseMovies(Map<String, dynamic> result) {
+    if (result['error'] == true) {
+      print('Skipping failed genre: ${result['genre_id']}');
+      return [];
+    }
+
+    try {
+      return (result['results'] as List)
+          .map((movie) => Movie.fromJson(movie))
+          .toList();
+    } catch (e) {
+      print('Error parsing movies: $e');
+      return [];
+    }
+  }
+
+  // Optional: Retry failed genres in background
+  Future<void> _retryFailedGenres(
+    List<Map<String, dynamic>> genreResults,
+    List<int> genreIds,
+  ) async {
+    for (int i = 0; i < genreResults.length; i++) {
+      if (genreResults[i]['error'] == true) {
+        final genreId = genreIds[i];
+        print('Retrying failed genre $genreId in background...');
+
+        final retryResult = await ExploreApi.retryGenre(genreId);
+        if (retryResult != null) {
+          // Update the specific genre list based on index
+          setState(() {
+            final movies = _safeParseMovies(retryResult);
+            switch (i) {
+              case 0:
+                horrorMovies = movies;
+                break;
+              case 1:
+                actionMovies = movies;
+                break;
+              case 2:
+                scifiMovies = movies;
+                break;
+              case 3:
+                comedyMovies = movies;
+                break;
+              case 4:
+                thrillerMovies = movies;
+                break;
+              case 5:
+                tvMovieMovies = movies;
+                break;
+              case 6:
+                mysteryMovies = movies;
+                break;
+              case 7:
+                crimeMovies = movies;
+                break;
+              case 8:
+                animationMovies = movies;
+                break;
+              case 9:
+                adventureMovies = movies;
+                break;
+              case 10:
+                dramaMovies = movies;
+                break;
+              case 11:
+                fantasyMovies = movies;
+                break;
+              case 12:
+                romanceMovies = movies;
+                break;
+              case 13:
+                familyMovies = movies;
+                break;
+              case 14:
+                documentaryMovies = movies;
+                break;
+              case 15:
+                historyMovies = movies;
+                break;
+              case 16:
+                warMovies = movies;
+                break;
+              case 17:
+                westernMovies = movies;
+                break;
+              case 18:
+                musicMovies = movies;
+                break;
+            }
+          });
+          print('Successfully retried genre $genreId');
+        }
+      }
     }
   }
 
@@ -311,11 +577,14 @@ class _ExploreScreenState extends State<ExploreScreen>
           child: Column(
             children: [
               _buildAnimatedAppBar(),
+              _buildSearchBar(),
               Expanded(
                 child: isLoading
                     ? _buildShimmerLoading()
                     : errorMessage.isNotEmpty
                     ? _buildErrorState()
+                    : _searchQuery.isNotEmpty
+                    ? _buildSearchResults()
                     : _buildContent(),
               ),
             ],
@@ -675,32 +944,134 @@ class _ExploreScreenState extends State<ExploreScreen>
         child: SingleChildScrollView(
           physics: BouncingScrollPhysics(),
           child: Column(
-            children: sections.asMap().entries.map((entry) {
-              int index = entry.key;
-              Map<String, dynamic> section = entry.value;
+            children: [
+              ...sections.asMap().entries.map((entry) {
+                int index = entry.key;
+                Map<String, dynamic> section = entry.value;
+                List<Movie> movies = section['movies'];
 
-              return TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0.0, end: 1.0),
-                duration: Duration(milliseconds: 300 + (index * 100)),
-                curve: Curves.easeOutBack,
-                builder: (context, value, child) {
-                  return Transform.translate(
-                    offset: Offset(0, 50 * (1 - value)),
-                    child: Opacity(
-                      opacity: value.clamp(0.0, 1.0),
-                      child: _buildSection(
-                        section['title'],
-                        section['movies'],
-                        section['gradient'],
-                      ),
-                    ),
+                // Show shimmer for sections that haven't loaded yet
+                if (index >= _loadedSections) {
+                  return _buildSectionShimmer(
+                    section['title'],
+                    section['gradient'],
                   );
-                },
-              );
-            }).toList(),
+                }
+
+                return TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  duration: Duration(milliseconds: 300 + (index * 100)),
+                  curve: Curves.easeOutBack,
+                  builder: (context, value, child) {
+                    return Transform.translate(
+                      offset: Offset(0, 50 * (1 - value)),
+                      child: Opacity(
+                        opacity: value.clamp(0.0, 1.0),
+                        child: _buildSection(
+                          section['title'],
+                          movies,
+                          section['gradient'],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              }).toList(),
+
+              // Loading indicator at bottom if still loading
+              if (_loadedSections < _totalSections)
+                Padding(
+                  padding: EdgeInsets.all(20),
+                  child: CircularProgressIndicator(
+                    color: Colors.red,
+                    strokeWidth: 2,
+                  ),
+                ),
+            ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildSectionShimmer(String title, List<Color> gradientColors) {
+    return AnimatedBuilder(
+      animation: _shimmerAnimation,
+      builder: (context, child) {
+        return Container(
+          margin: EdgeInsets.only(bottom: 30),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 4,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: gradientColors),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    SizedBox(width: 12),
+                    Container(
+                      height: 24,
+                      width: 150,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        gradient: LinearGradient(
+                          begin: Alignment(-1.0 + _shimmerAnimation.value, 0.0),
+                          end: Alignment(1.0 + _shimmerAnimation.value, 0.0),
+                          colors: [
+                            Colors.white.withOpacity(0.1),
+                            Colors.white.withOpacity(0.2),
+                            Colors.white.withOpacity(0.1),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: 15),
+              Container(
+                height: 250,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: 5,
+                  physics: NeverScrollableScrollPhysics(),
+                  itemBuilder: (context, index) {
+                    return Container(
+                      width: 140,
+                      margin: EdgeInsets.only(left: 20),
+                      child: Container(
+                        height: 190,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(18),
+                          gradient: LinearGradient(
+                            begin: Alignment(
+                              -1.0 + _shimmerAnimation.value,
+                              -1.0,
+                            ),
+                            end: Alignment(1.0 + _shimmerAnimation.value, 1.0),
+                            colors: [
+                              Colors.white.withOpacity(0.1),
+                              Colors.white.withOpacity(0.2),
+                              Colors.white.withOpacity(0.1),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

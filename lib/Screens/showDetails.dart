@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -29,7 +30,7 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
   late Animation<double> _fadeAnimation;
   Map<String, dynamic>? _showDetails;
   bool _isLoadingDetails = false;
-
+  bool _isSaved = false;
   // Season/Episode selection
   int _selectedSeason = 1;
   int _selectedEpisode = 1;
@@ -50,12 +51,91 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
     _animationController.forward();
     _loadWatchProgress();
     _loadShowDetails();
+    _checkIfSaved();
   }
 
   @override
   void dispose() {
     _animationController.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkIfSaved() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedShowsJson = prefs.getStringList('saved_shows') ?? [];
+
+    setState(() {
+      _isSaved = savedShowsJson.any((json) {
+        final show = jsonDecode(json);
+        return show['id'] == widget.show.id.toString();
+      });
+    });
+  }
+
+  // Add this method to save/unsave shows
+  Future<void> _toggleSaveShow() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedShowsJson = prefs.getStringList('saved_shows') ?? [];
+
+      if (_isSaved) {
+        // Remove from saved
+        savedShowsJson.removeWhere((json) {
+          final show = jsonDecode(json);
+          return show['id'] == widget.show.id.toString();
+        });
+        _showSnackBar('Show removed from saved list', Colors.orange);
+      } else {
+        // Add to saved
+        final savedShow = {
+          'id': widget.show.id.toString(),
+          'name': widget.show.name,
+          'originalName': widget.show.originalName,
+          'overview': widget.show.overview ?? '',
+          'posterUrl': widget.show.posterUrl,
+          'backdropUrl': widget.show.backdropUrlLarge,
+          'firstAirDate': widget.show.firstAirDate ?? '',
+          'voteAverage': widget.show.voteAverage,
+          'originalLanguage': widget.show.originalLanguage ?? '',
+        };
+        savedShowsJson.add(jsonEncode(savedShow));
+        _showSnackBar('Show saved successfully!', Colors.green);
+      }
+
+      await prefs.setStringList('saved_shows', savedShowsJson);
+      setState(() {
+        _isSaved = !_isSaved;
+      });
+    } catch (e) {
+      _showSnackBar('Failed to save show: $e', Colors.red);
+    }
+  }
+
+  void _showSnackBar(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              color == Colors.red
+                  ? Icons.error_outline
+                  : Icons.check_circle_outline,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                message,
+                style: GoogleFonts.nunito(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
   }
 
   Future<void> _loadWatchProgress() async {
@@ -124,17 +204,49 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
         return;
       }
 
-      // If no cache, fetch from API
+      // If no cache, fetch from API with callbacks
       final result = await _api.searchTvShowByTmdbId(
         tmdbId: widget.show.id,
         season: _selectedSeason,
         episode: _selectedEpisode,
         quality: '1080',
-        fetchSubs: true,
+        fetchSubs: true, // This will use the new fullhdmovies.me endpoint
         onStatusUpdate: (status) {
           print('Search status: $status');
+          if (status == 'stream_ready') {
+            print('✅ Stream ready!');
+          }
+        },
+        onStreamReady: (streamUrl) {
+          print('🎬 Stream URL received immediately: $streamUrl');
         },
       );
+
+      // NEW: If no subtitles found in main result, try dedicated subtitle endpoint
+      if ((result['subtitles'] == null ||
+          (result['subtitles'] as List).isEmpty)) {
+        print(
+          '📝 No subtitles in main result, trying dedicated subtitle endpoint...',
+        );
+        try {
+          final additionalSubtitles = await _api.fetchTvSubtitles(
+            tmdbId: widget.show.id,
+            seasonNumber: _selectedSeason,
+            episodeNumber: _selectedEpisode,
+            showTitle: widget.show.name,
+          );
+
+          if (additionalSubtitles.isNotEmpty) {
+            print(
+              '🎯 Found ${additionalSubtitles.length} additional subtitles',
+            );
+            result['subtitles'] = additionalSubtitles;
+          }
+        } catch (e) {
+          print('⚠️ Dedicated subtitle extraction failed: $e');
+          // Continue without subtitles
+        }
+      }
 
       // Cache the result
       await StreamCacheService.cacheTvShowStreamResult(
@@ -162,6 +274,29 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
   // Updated _playEpisode method in ShowDetailScreen
   void _playEpisode(Map<String, dynamic> result) {
     if (result['m3u8_link'] != null) {
+      // Extract subtitles from API response
+      List<String> subtitleUrls = [];
+      if (result['subtitles'] != null && result['subtitles'] is List) {
+        subtitleUrls = List<String>.from(
+          (result['subtitles'] as List).map((s) => s.toString()),
+        );
+      }
+
+      print('📺 Playing Episode S${_selectedSeason}E${_selectedEpisode}');
+      print('🎬 Stream: ${result['m3u8_link']}');
+      print('📝 Subtitles found: ${subtitleUrls.length}');
+
+      // Log each subtitle source
+      for (var i = 0; i < subtitleUrls.length; i++) {
+        final subtitleUrl = subtitleUrls[i];
+        final source = subtitleUrl.contains('fullhdmovies')
+            ? 'fullhdmovies.me'
+            : '111movies';
+        print(
+          '   Subtitle ${i + 1} ($source): ${subtitleUrl.length > 100 ? '${subtitleUrl.substring(0, 100)}...' : subtitleUrl}',
+        );
+      }
+
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -171,9 +306,7 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
             startPosition: _watchProgress[_selectedSeason]?[_selectedEpisode],
             onPositionChanged: (position) =>
                 _saveWatchProgress(_selectedSeason, _selectedEpisode, position),
-            subtitleUrls: result['subtitles'] != null
-                ? List<String>.from(result['subtitles'])
-                : null,
+            subtitleUrls: subtitleUrls.isNotEmpty ? subtitleUrls : null,
             isTvShow: true,
             currentEpisode: _selectedEpisode,
             totalEpisodes: _episodesBySeason[_selectedSeason]?.length,
@@ -181,9 +314,22 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
             onPreviousEpisode: _canGoToPreviousEpisode()
                 ? _goToPreviousEpisode
                 : null,
+            customHeaders: {
+              'Referer': 'https://111movies.com/',
+              'Origin': 'https://111movies.com',
+            },
+            // Pass TV show info for prefetching
+            tmdbId: widget.show.id,
+            seasonNumber: _selectedSeason,
+            quality: '1080',
           ),
         ),
-      );
+      ).then((_) {
+        // Refresh when returning from player
+        _loadWatchProgress();
+      });
+    } else {
+      _showErrorSnackBar('No stream URL received');
     }
   }
 
@@ -487,6 +633,23 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
           onPressed: () => Navigator.pop(context),
         ),
       ),
+      actions: [
+        Container(
+          margin: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: IconButton(
+            icon: Icon(
+              _isSaved ? Icons.bookmark : Icons.bookmark_border,
+              color: _isSaved ? Colors.amber : Colors.white,
+            ),
+            onPressed: _toggleSaveShow,
+            tooltip: _isSaved ? 'Remove from saved' : 'Save show',
+          ),
+        ),
+      ],
       flexibleSpace: FlexibleSpaceBar(
         background: Stack(
           fit: StackFit.expand,
@@ -796,45 +959,59 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
-      child: ElevatedButton.icon(
-        onPressed: _isFetching ? null : _fetchStream,
-        icon: _isFetching
-            ? SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              )
-            : Icon(
-                hasProgress ? Icons.play_circle_filled : Icons.play_arrow,
-                size: 24,
+      child: Column(
+        children: [
+          ElevatedButton.icon(
+            onPressed: _isFetching ? null : _fetchStream,
+            icon: _isFetching
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : Icon(
+                    hasProgress ? Icons.play_circle_filled : Icons.play_arrow,
+                    size: 24,
+                  ),
+            label: Text(
+              _isFetching
+                  ? 'Loading Stream & Subtitles...'
+                  : hasProgress
+                  ? 'Continue Watching'
+                  : 'Play Episode',
+              style: GoogleFonts.nunito(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
               ),
-        label: Text(
-          _isFetching
-              ? 'Loading Stream...'
-              : hasProgress
-              ? 'Continue Watching'
-              : 'Play Episode',
-          style: GoogleFonts.nunito(fontSize: 16, fontWeight: FontWeight.w700),
-        ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: hasProgress
-              ? const Color.fromARGB(255, 9, 255, 0)
-              : const Color.fromARGB(255, 73, 54, 244),
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: hasProgress
+                  ? const Color.fromARGB(255, 9, 255, 0)
+                  : const Color.fromARGB(255, 73, 54, 244),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              elevation: 8,
+              shadowColor:
+                  (hasProgress
+                          ? Colors.orange
+                          : const Color.fromARGB(255, 54, 184, 244))
+                      .withOpacity(0.3),
+            ),
           ),
-          elevation: 8,
-          shadowColor:
-              (hasProgress
-                      ? Colors.orange
-                      : const Color.fromARGB(255, 54, 184, 244))
-                  .withOpacity(0.3),
-        ),
+          if (_isFetching) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Extracting stream and subtitle files...',
+              style: GoogleFonts.nunito(color: Colors.grey[400], fontSize: 12),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -843,23 +1020,56 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
     if (_streamResult != null &&
         _streamResult!['subtitles'] != null &&
         (_streamResult!['subtitles'] as List).isNotEmpty) {
+      final subtitleCount = (_streamResult!['subtitles'] as List).length;
+      final hasFullHdSubtitles = (_streamResult!['subtitles'] as List).any(
+        (s) => s.toString().contains('fullhdmovies'),
+      );
+
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.green.withOpacity(0.1),
+          color: hasFullHdSubtitles
+              ? Colors.green.withOpacity(0.1)
+              : Colors.blue.withOpacity(0.1),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.green.withOpacity(0.3)),
+          border: Border.all(
+            color: hasFullHdSubtitles
+                ? Colors.green.withOpacity(0.3)
+                : Colors.blue.withOpacity(0.3),
+          ),
         ),
         child: Row(
           children: [
-            Icon(Icons.subtitles_rounded, color: Colors.green),
+            Icon(
+              Icons.subtitles_rounded,
+              color: hasFullHdSubtitles ? Colors.green : Colors.blue,
+            ),
             const SizedBox(width: 12),
-            Text(
-              'Subtitles Available',
-              style: GoogleFonts.nunito(
-                color: Colors.green,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    subtitleCount == 1
+                        ? '1 Subtitle Available'
+                        : '$subtitleCount Subtitles Available',
+                    style: GoogleFonts.nunito(
+                      color: hasFullHdSubtitles ? Colors.green : Colors.blue,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (hasFullHdSubtitles) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Enhanced subtitles from fullhdmovies.me',
+                      style: GoogleFonts.nunito(
+                        color: Colors.green,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
           ],

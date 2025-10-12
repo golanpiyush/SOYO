@@ -2,16 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:soyo/Screens/animedetails.dart';
+import 'package:provider/provider.dart';
+import 'package:soyo/Screens/collectionDetailScreen.dart';
 import 'package:soyo/Screens/hindimoviesScreen.dart';
+import 'package:soyo/Screens/javDetailsScreen.dart';
+import 'package:soyo/Screens/moreJavs.dart';
 import 'package:soyo/Screens/moviechatscreen.dart';
+import 'package:soyo/Screens/moviecollectionscreen.dart';
 import 'package:soyo/Screens/playerScreen.dart';
 import 'package:soyo/Screens/movieDetailScreen.dart';
+import 'package:soyo/Screens/pondoScreen.dart';
+import 'package:soyo/Screens/xhamsterallcategory.dart';
+import 'package:soyo/Services/Providers/settings_provider.dart';
 import 'package:soyo/Services/anime_collection_api.dart';
 import 'package:soyo/Services/hindimovies_api.dart';
+import 'package:soyo/Services/javScrapper.dart';
 import 'package:soyo/Services/m3u8api.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:soyo/Services/xhamsterservices.dart';
 import 'package:soyo/models/anime_model.dart';
+import 'package:soyo/models/javData.dart';
+import 'package:soyo/models/moviecollections.dart';
 import 'package:soyo/models/moviemodel.dart';
 import 'package:soyo/Services/collections_api.dart';
 
@@ -23,12 +36,15 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final TextEditingController _movieController = TextEditingController();
   final M3U8Api _api = M3U8Api();
+  final XHamsterService _service = XHamsterService();
   HindiMoviesApi _hindiMoviesApi = HindiMoviesApi();
   bool _isLoading = false;
   Map<String, dynamic>? _searchResult;
   List<Movie> _searchResults = [];
   bool _showMultipleResults = false;
   String _searchStatus = '';
+  List<MovieCollection> _movieCollections = [];
+  bool _collectionsLoading = true;
 
   List<Movie> _hindiMovies = [];
   bool _hindiMoviesLoading = true;
@@ -59,6 +75,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late Animation<double> _shimmerAnimation;
   late Animation<double> _searchAnimation;
 
+  // JAV Scraper variables
+  JAVScraper _javScraper = JAVScraper();
+  List<JAVVideo> _javVideos = [];
+  bool _javLoading = true;
+  List<XHamsterCategory> _xhamsterCategories = [];
+  bool _xhamsterLoading = true;
+
   @override
   void initState() {
     super.initState();
@@ -66,6 +89,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _loadHindiMovies();
     _loadAnime();
     _loadCollectionsStreaming();
+    _loadMovieCollections(); // Add this line
+    // _loadJAVVideos();
+    _loadXHamsterCategories();
   }
 
   void _initAnimations() {
@@ -126,6 +152,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _movieController.dispose();
     _animeApi.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadMovieCollections() async {
+    try {
+      setState(() {
+        _collectionsLoading = true;
+      });
+
+      final collections = await CollectionsApiService.getPopularCollections();
+
+      setState(() {
+        _movieCollections = collections;
+        _collectionsLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _collectionsLoading = false;
+      });
+      print('Error loading movie collections: $e');
+    }
   }
 
   Future<void> _loadAnime() async {
@@ -212,6 +258,37 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           _errorMessage = 'Failed to load some collections';
         }
       });
+    }
+  }
+
+  Future<void> _loadXHamsterCategories() async {
+    // Get NSFW setting from provider
+    final nsfwEnabled = context.read<SettingsProvider>().nsfwEnabled;
+
+    if (!nsfwEnabled) {
+      setState(() {
+        _xhamsterCategories = [];
+        _xhamsterLoading = false;
+      });
+      return;
+    }
+
+    try {
+      setState(() {
+        _xhamsterLoading = true;
+      });
+
+      final categories = await _service.getCategories();
+
+      setState(() {
+        _xhamsterCategories = categories;
+        _xhamsterLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _xhamsterLoading = false;
+      });
+      print('Error loading xHamster categories: $e');
     }
   }
 
@@ -329,6 +406,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
       ),
     );
+  }
+
+  Future<void> _loadJAVVideos() async {
+    try {
+      setState(() {
+        _javLoading = true;
+      });
+
+      final videos = await _javScraper.scrapeMultiplePages(
+        maxPages: 3,
+      ); // Adjust pages as needed
+
+      setState(() {
+        _javVideos = videos;
+        _javLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _javLoading = false;
+      });
+      print('Error loading JAV videos: $e');
+    }
   }
 
   void _navigateToMovieChat() {
@@ -506,7 +605,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildContent() {
+    final nsfwEnabled = context.watch<SettingsProvider>().nsfwEnabled;
+
     final sections = [
+      {
+        'title': 'Movie Collections',
+        'isCollections': true,
+        'collections': _movieCollections,
+        'gradient': [Colors.deepPurple, Colors.indigo],
+        'icon': 'assets/icon/collection_icon.svg',
+        'loading': _collectionsLoading,
+      },
       {
         'title': 'Anime Collection',
         'movies': _animeList
@@ -532,7 +641,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'icon': 'assets/icon/anime_icon.svg',
         'loading': _animeLoading,
         'isHindiMovies': false,
-        'isAnime': true, // ✅ ADD THIS LINE
+        'isAnime': true,
       },
       {
         'title': 'Hindi Movies',
@@ -541,44 +650,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'icon': 'assets/icon/bollywood_icon.svg',
         'loading': _hindiMoviesLoading,
         'isHindiMovies': true,
-        'isAnime': false, // ✅ ADD THIS LINE
+        'isAnime': false,
       },
-      {
-        'title': 'Apple TV+',
-        'movies': _collections['Apple TV+'] ?? [],
-        'gradient': [Colors.white, Colors.black],
-        'icon': 'assets/icon/appletv_icon.svg',
-        'loading': _collectionLoading['Apple TV+'] ?? false,
-        'isHindiMovies': false,
-        'isAnime': false, // ✅ ADD THIS LINE
-      },
-      {
-        'title': 'Amazon Prime',
-        'movies': _collections['Prime Video'] ?? [],
-        'gradient': [Colors.blue, Colors.lightBlue],
-        'icon': 'assets/icon/amazonprime_icon.svg',
-        'loading': _collectionLoading['Prime Video'] ?? false,
-        'isHindiMovies': false,
-        'isAnime': false, // ✅ ADD THIS LINE
-      },
-      {
-        'title': 'Netflix',
-        'movies': _collections['Netflix'] ?? [],
-        'gradient': [Colors.red, Colors.black],
-        'icon': 'assets/icon/netflix_icon.svg',
-        'loading': _collectionLoading['Netflix'] ?? false,
-        'isHindiMovies': false,
-        'isAnime': false, // ✅ ADD THIS LINE
-      },
-      {
-        'title': 'Disney+',
-        'movies': _collections['Disney+'] ?? [],
-        'gradient': [Colors.blue, Colors.purple],
-        'icon': 'assets/icon/disneyplus_icon.svg',
-        'loading': _collectionLoading['Disney+'] ?? false,
-        'isHindiMovies': false,
-        'isAnime': false, // ✅ ADD THIS LINE
-      },
+      // Add JAV Section here
+      // {
+      //   'title': 'JAV HD',
+      //   'javVideos': _javVideos,
+      //   'gradient': [Colors.pink, Colors.purple],
+      //   'icon': 'assets/icon/jav_icon.svg', // You'll need to create this icon
+      //   'loading': _javLoading,
+      //   'isJAV': true, // New flag for JAV section
+      // },
+      if (nsfwEnabled)
+        {
+          'title': 'Adult Categories',
+          'xhamsterCategories': _xhamsterCategories,
+          'gradient': [
+            const Color.fromARGB(255, 65, 204, 72),
+            const Color.fromARGB(255, 21, 56, 211),
+          ],
+          'icon': 'assets/icon/adult_icon.svg',
+          'loading': _xhamsterLoading,
+          'isXHamster': true,
+        },
     ];
 
     return FadeTransition(
@@ -593,27 +687,54 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               Map<String, dynamic> section = entry.value;
 
               return AnimatedBuilder(
-                animation: _fadeController,
+                animation: _slideController,
                 builder: (context, child) {
-                  double animationValue =
-                      (_fadeController.value * (index + 1) / sections.length)
-                          .clamp(0.0, 1.0);
+                  // Fixed animation calculation - now all sections have full opacity
+                  // Using a staggered slide animation instead of opacity reduction
+                  double slideProgress = _slideController.value;
+                  double staggeredDelay = (index * 0.1).clamp(0.0, 0.5);
+                  double adjustedProgress = (slideProgress - staggeredDelay)
+                      .clamp(0.0, 1.0);
 
                   return Transform.translate(
-                    offset: Offset(0, 50 * (1 - animationValue)),
+                    offset: Offset(0, 30 * (1 - adjustedProgress)),
                     child: Opacity(
-                      opacity: animationValue,
-                      child: _buildSection(
-                        section['title'],
-                        section['movies'],
-                        section['gradient'],
-                        section['icon'],
-                        section['loading'],
-                        section['isHindiMovies'] ?? false,
-                        isAnime:
-                            section['isAnime'] ??
-                            false, // ✅ PASS isAnime PARAMETER
-                      ),
+                      opacity:
+                          adjustedProgress, // This ensures all sections reach full opacity
+                      child: section['isCollections'] == true
+                          ? _buildCollectionsSection(
+                              section['title'],
+                              section['collections'],
+                              section['gradient'],
+                              section['icon'],
+                              section['loading'],
+                            )
+                          // : section['isJAV'] ==
+                          //       true // Check for JAV section
+                          // ? _buildJAVSection(
+                          //     section['title'],
+                          //     section['javVideos'],
+                          //     section['gradient'],
+                          //     section['icon'],
+                          //     section['loading'],
+                          //   )
+                          : section['isXHamster'] == true
+                          ? _buildXHamsterCategoriesSection(
+                              section['title'],
+                              section['xhamsterCategories'],
+                              section['gradient'],
+                              section['icon'],
+                              section['loading'],
+                            )
+                          : _buildSection(
+                              section['title'],
+                              section['movies'],
+                              section['gradient'],
+                              section['icon'],
+                              section['loading'],
+                              section['isHindiMovies'] ?? false,
+                              isAnime: section['isAnime'] ?? false,
+                            ),
                     ),
                   );
                 },
@@ -625,7 +746,1042 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ✅ FIXED: Update your _buildSection calls to include isAnime parameter
+  Widget _buildXHamsterCategoriesSection(
+    String title,
+    List<XHamsterCategory> categories,
+    List<Color> gradientColors,
+    String iconPath,
+    bool isLoading,
+  ) {
+    if (isLoading) {
+      return _buildSectionShimmer(title, gradientColors);
+    }
+
+    if (categories.isEmpty) return const SizedBox();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 30),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: GestureDetector(
+              onTap: _navigateToAllCategories,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.white.withOpacity(0.05),
+                ),
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.category_rounded,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ShaderMask(
+                        shaderCallback: (bounds) => LinearGradient(
+                          colors: [
+                            Colors.white,
+                            gradientColors[0].withOpacity(0.9),
+                          ],
+                        ).createShader(bounds),
+                        child: Text(
+                          title,
+                          style: GoogleFonts.nunito(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: gradientColors),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${categories.length}',
+                        style: GoogleFonts.nunito(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(
+                      Icons.arrow_forward_ios,
+                      color: Colors.white70,
+                      size: 16,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 15),
+          Container(
+            height: 200,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              itemCount: categories.length > 15 ? 15 : categories.length,
+              itemBuilder: (context, index) {
+                final category = categories[index];
+                return TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  duration: Duration(milliseconds: 300 + (index * 50)),
+                  curve: Curves.elasticOut,
+                  builder: (context, value, child) {
+                    return Transform.scale(
+                      scale: 0.95 + (0.05 * value),
+                      child: _buildCategoryCard(
+                        category,
+                        index,
+                        categories.length,
+                        gradientColors,
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryCard(
+    XHamsterCategory category,
+    int index,
+    int totalCount,
+    List<Color> gradientColors,
+  ) {
+    final isFirst = index == 0;
+    final isLast = index == totalCount - 1;
+
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                HamsterCategoryVideosScreen(category: category),
+          ),
+        );
+      },
+      child: Container(
+        width: 140,
+        margin: EdgeInsets.only(left: isFirst ? 20 : 8, right: isLast ? 20 : 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              height: 140,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient: LinearGradient(
+                  colors: gradientColors,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: gradientColors[0].withOpacity(0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Container(
+                margin: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  color: Colors.grey[900],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      CachedNetworkImage(
+                        imageUrl: category.coverImage,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
+                          color: Colors.grey[850],
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                gradientColors[0],
+                              ),
+                            ),
+                          ),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          color: Colors.grey[850],
+                          child: Icon(
+                            Icons.broken_image,
+                            color: Colors.grey[600],
+                            size: 40,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.black.withOpacity(0.7),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.6),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.play_arrow_rounded,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                category.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.nunito(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  height: 1.3,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _navigateToAllCategories() {
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            HamsterAllCategoriesScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return SlideTransition(
+            position: Tween<Offset>(begin: Offset(1.0, 0.0), end: Offset.zero)
+                .animate(
+                  CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                  ),
+                ),
+            child: child,
+          );
+        },
+        transitionDuration: Duration(milliseconds: 300),
+      ),
+    );
+  }
+
+  Widget _buildJAVSection(
+    String title,
+    List<JAVVideo> javVideos,
+    List<Color> gradientColors,
+    String iconPath,
+    bool isLoading,
+  ) {
+    if (isLoading) {
+      return _buildSectionShimmer(title, gradientColors);
+    }
+
+    if (javVideos.isEmpty) return const SizedBox();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 30),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: GestureDetector(
+              onTap: _navigateToAllJAV, // Your custom navigation method
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.white.withOpacity(0.05),
+                ),
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: iconPath.endsWith('.svg')
+                          ? SvgPicture.asset(
+                              iconPath,
+                              width: 24,
+                              height: 24,
+                              color: Colors.white,
+                            )
+                          : const Icon(
+                              Icons.video_library,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ShaderMask(
+                        shaderCallback: (bounds) => LinearGradient(
+                          colors: [
+                            Colors.white,
+                            gradientColors[0].withOpacity(0.9),
+                          ],
+                        ).createShader(bounds),
+                        child: Text(
+                          title,
+                          style: GoogleFonts.nunito(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: gradientColors),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${javVideos.length}',
+                        style: GoogleFonts.nunito(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(
+                      Icons.arrow_forward_ios,
+                      color: Colors.white70,
+                      size: 16,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 15),
+          Container(
+            height: 250,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              itemCount: javVideos.length,
+              itemBuilder: (context, index) {
+                final JAVVideo video = javVideos[index];
+                return TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  duration: Duration(milliseconds: 300 + (index * 50)),
+                  curve: Curves.elasticOut,
+                  builder: (context, value, child) {
+                    return Transform.scale(
+                      scale: 0.95 + (0.05 * value),
+                      child: _buildJAVCard(
+                        video,
+                        index,
+                        javVideos.length,
+                        gradientColors,
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildJAVCard(
+    JAVVideo video,
+    int index,
+    int totalCount,
+    List<Color> gradientColors,
+  ) {
+    final isFirst = index == 0;
+    final isLast = index == totalCount - 1;
+
+    return GestureDetector(
+      onTap: () {
+        // Navigate to JAV detail screen
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => JAVDetailScreen(video: video),
+          ),
+        );
+      },
+      child: Container(
+        width: 160,
+        margin: EdgeInsets.only(left: isFirst ? 20 : 8, right: isLast ? 20 : 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Poster container with gradient border
+            Container(
+              height: 180,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient: LinearGradient(
+                  colors: gradientColors,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: gradientColors[0].withOpacity(0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Container(
+                margin: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  color: Colors.grey[900],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // Poster image
+                      CachedNetworkImage(
+                        imageUrl: video.posterUrl,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
+                          color: Colors.grey[850],
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                gradientColors[0],
+                              ),
+                            ),
+                          ),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          color: Colors.grey[850],
+                          child: Icon(
+                            Icons.broken_image,
+                            color: Colors.grey[600],
+                            size: 40,
+                          ),
+                        ),
+                      ),
+
+                      // Gradient overlay at bottom
+                      Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        child: Container(
+                          height: 80,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent,
+                                Colors.black.withOpacity(0.8),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // Duration badge (top-right)
+                      if (video.duration.isNotEmpty)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.7),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.access_time,
+                                  color: Colors.white,
+                                  size: 12,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  video.duration,
+                                  style: GoogleFonts.nunito(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                      // Code badge (bottom-left)
+                      if (video.code.isNotEmpty)
+                        Positioned(
+                          bottom: 8,
+                          left: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(colors: gradientColors),
+                              borderRadius: BorderRadius.circular(8),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: gradientColors[0].withOpacity(0.4),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              video.code,
+                              style: GoogleFonts.nunito(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                      // Play icon overlay (center)
+                      Center(
+                        child: Container(
+                          width: 50,
+                          height: 50,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.6),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.play_arrow_rounded,
+                            color: Colors.white,
+                            size: 32,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            // Title
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                video.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.nunito(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  height: 1.3,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 4),
+
+            // Upload date
+            if (video.uploadDate.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.calendar_today,
+                      color: Colors.grey[500],
+                      size: 11,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      video.uploadDate,
+                      style: GoogleFonts.nunito(
+                        color: Colors.grey[500],
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _navigateToAllJAV() {
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            HamsterAllCategoriesScreen(
+              // preloadedVideos: _javVideos,
+              // gradientColors: [Colors.pink, Colors.purple],
+            ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return SlideTransition(
+            position: Tween<Offset>(begin: Offset(1.0, 0.0), end: Offset.zero)
+                .animate(
+                  CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                  ),
+                ),
+            child: child,
+          );
+        },
+        transitionDuration: Duration(milliseconds: 300),
+      ),
+    );
+  }
+
+  // New method for collections section
+  Widget _buildCollectionsSection(
+    String title,
+    List<MovieCollection> collections,
+    List<Color> gradientColors,
+    String iconPath,
+    bool isLoading,
+  ) {
+    if (isLoading) {
+      return _buildSectionShimmer(title, gradientColors);
+    }
+
+    if (collections.isEmpty) return const SizedBox();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 30),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: GestureDetector(
+              onTap: () => _navigateToMovieCollections(),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.white.withOpacity(0.05),
+                ),
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    // Platform icon
+                    Container(
+                      width: 32,
+                      height: 32,
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: iconPath.endsWith('.svg')
+                          ? SvgPicture.asset(
+                              iconPath,
+                              width: 24,
+                              height: 24,
+                              color: Colors.white,
+                            )
+                          : const Icon(
+                              Icons.collections,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ShaderMask(
+                        shaderCallback: (bounds) => LinearGradient(
+                          colors: [
+                            Colors.white,
+                            gradientColors[0].withOpacity(0.9),
+                          ],
+                        ).createShader(bounds),
+                        child: Text(
+                          title,
+                          style: GoogleFonts.nunito(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: gradientColors),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${collections.length}',
+                        style: GoogleFonts.nunito(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(
+                      Icons.arrow_forward_ios,
+                      color: Colors.white70,
+                      size: 16,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 15),
+          Container(
+            height: 250,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              itemCount: collections.length,
+              itemBuilder: (context, index) {
+                return TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  duration: Duration(milliseconds: 300 + (index * 50)),
+                  curve: Curves.elasticOut,
+                  builder: (context, value, child) {
+                    return Transform.scale(
+                      scale: 0.95 + (0.05 * value),
+                      child: _buildCollectionCard(
+                        collections[index],
+                        index,
+                        collections.length,
+                        gradientColors,
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // New method for collection cards
+  Widget _buildCollectionCard(
+    MovieCollection collection,
+    int index,
+    int totalItems,
+    List<Color> gradientColors,
+  ) {
+    return GestureDetector(
+      onTap: () => _navigateToCollectionDetails(collection),
+      child: AnimatedContainer(
+        duration: Duration(milliseconds: 200),
+        width: 140,
+        margin: EdgeInsets.only(
+          left: 20,
+          right: index == totalItems - 1 ? 20 : 0,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Hero(
+              tag: 'collection-${collection.id}',
+              child: Container(
+                height: 190,
+                width: 140,
+                child: Stack(
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: [
+                          BoxShadow(
+                            color: gradientColors[0].withOpacity(0.6),
+                            blurRadius: 20,
+                            offset: Offset(0, 10),
+                            spreadRadius: -3,
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(18),
+                        child: CachedNetworkImage(
+                          imageUrl: collection.posterUrl,
+                          fit: BoxFit.cover,
+                          width: 140,
+                          height: 190,
+                          maxHeightDiskCache: 400,
+                          maxWidthDiskCache: 300,
+                          memCacheHeight: 400,
+                          memCacheWidth: 300,
+                          placeholder: (context, url) => Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.grey.shade900,
+                                  Colors.grey.shade800,
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                color: gradientColors[0],
+                                strokeWidth: 2,
+                              ),
+                            ),
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(18),
+                              child: Image.asset(
+                                'assets/notfoundRaw.png',
+                                fit: BoxFit.cover,
+                                width: 140,
+                                height: 190,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 10,
+                      right: 10,
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.8),
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.movie_filter,
+                              color: Colors.amber,
+                              size: 12,
+                            ),
+                            SizedBox(width: 2),
+                            Text(
+                              '${collection.parts.length}',
+                              style: GoogleFonts.nunito(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 10,
+                      left: 10,
+                      right: 10,
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.8),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.2),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.star, color: Colors.amber, size: 12),
+                            SizedBox(width: 2),
+                            Text(
+                              collection.averageRating.toStringAsFixed(1),
+                              style: GoogleFonts.nunito(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(height: 12),
+            Text(
+              collection.name,
+              style: GoogleFonts.nunito(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                height: 1.2,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Navigation methods
+  void _navigateToMovieCollections() {
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            MovieCollectionsScreen(
+              preloadedCollections:
+                  _movieCollections, // Pass the already loaded collections
+            ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return SlideTransition(
+            position: Tween<Offset>(begin: Offset(1.0, 0.0), end: Offset.zero)
+                .animate(
+                  CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                  ),
+                ),
+            child: child,
+          );
+        },
+        transitionDuration: Duration(milliseconds: 300),
+      ),
+    );
+  }
+
+  void _navigateToCollectionDetails(MovieCollection collection) {
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            CollectionDetailScreen(collection: collection),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return SlideTransition(
+            position: Tween<Offset>(begin: Offset(1.0, 0.0), end: Offset.zero)
+                .animate(
+                  CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                  ),
+                ),
+            child: child,
+          );
+        },
+        transitionDuration: Duration(milliseconds: 300),
+      ),
+    );
+  }
 
   Widget _buildSection(
     String title,

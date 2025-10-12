@@ -11,8 +11,8 @@ import 'package:soyo/Screens/playerScreen.dart';
 import 'package:soyo/Services/streams_cacher.dart';
 import 'package:soyo/models/moviemodel.dart';
 import 'package:soyo/models/savedmoviesmodel.dart';
-
 import 'package:video_player/video_player.dart';
+import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 class MovieDetailScreen extends StatefulWidget {
   final Movie movie;
@@ -34,12 +34,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   late Animation<double> _fadeAnimation;
   Map<String, dynamic>? _movieDetails;
   bool _isLoadingDetails = false;
+  bool autoPlay = true; // Add this line
 
   bool _isUsingCache = false;
 
   bool _isSaved = false;
   late AnimationController _saveAnimationController;
   late Animation<double> _saveAnimation;
+  final YoutubeExplode _yt = YoutubeExplode();
 
   // Trailer-related variables
   late VideoPlayerController _trailerController;
@@ -57,11 +59,82 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   bool _isDownloaded = false;
   String? _downloadId;
 
+  late AnimationController _slideAnimationController;
+  late Animation<Offset> _slideAnimation;
+  late AnimationController _scaleAnimationController;
+  late Animation<double> _scaleAnimation;
+  late AnimationController _pulseAnimationController;
+  late Animation<double> _pulseAnimation;
+  late AnimationController _shimmerAnimationController;
+  late Animation<double> _shimmerAnimation;
+
   @override
   void initState() {
     super.initState();
+    _pulseAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    )..repeat(reverse: true);
+
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.05).animate(
+      CurvedAnimation(
+        parent: _pulseAnimationController,
+        curve: Curves.easeInOut,
+      ),
+    );
+
+    // Shimmer animation for cards
+    _shimmerAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 2000),
+      vsync: this,
+    )..repeat();
+
+    _shimmerAnimation = Tween<double>(begin: -1.0, end: 2.0).animate(
+      CurvedAnimation(
+        parent: _shimmerAnimationController,
+        curve: Curves.easeInOut,
+      ),
+    );
+    // Existing animation controller...
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+
+    // ADD THESE NEW ANIMATION CONTROLLERS
+    _slideAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _slideAnimationController,
+            curve: Curves.easeOutCubic,
+          ),
+        );
+
+    _scaleAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _scaleAnimationController,
+        curve: Curves.easeOutBack,
+      ),
+    );
+
+    _animationController.forward();
+    _slideAnimationController.forward();
+    _scaleAnimationController.forward();
+
+    // Rest of your existing initState code...
+    _saveAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
       vsync: this,
     );
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -70,7 +143,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     _animationController.forward();
     _loadWatchProgress();
     _loadMovieDetails();
+    _loadAutoPlaySetting();
     _checkDownloadStatus();
+
     _saveAnimationController = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
@@ -89,12 +164,22 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     StreamCacheService.clearExpiredCache();
   }
 
+  Future<void> _loadAutoPlaySetting() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      autoPlay = prefs.getBool('auto_play') ?? true;
+    });
+  }
+
   @override
   void dispose() {
     _animationController.dispose();
+    _slideAnimationController.dispose(); // ADD THIS
+    _scaleAnimationController.dispose(); // ADD THIS
     _trailerController.dispose();
     _trailerTimer?.cancel();
     _saveAnimationController.dispose();
+    _yt.close();
     super.dispose();
   }
 
@@ -384,8 +469,12 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     );
   }
 
-  void _playMovie(Map<String, dynamic> result) {
+  void _playMovie(Map<String, dynamic> result) async {
     if (result['m3u8_link'] != null) {
+      final prefs = await SharedPreferences.getInstance();
+      final resumeFromLastPosition =
+          prefs.getBool('resume_from_last_position') ?? false;
+
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -398,6 +487,12 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                 ? List<String>.from(result['subtitles'])
                 : null,
             isTvShow: false,
+            autoPlay: autoPlay,
+            resumeFromLastPosition: resumeFromLastPosition,
+            customHeaders: {
+              'Referer': 'https://111movies.com/',
+              'Origin': 'https://111movies.com',
+            }, // Pass the setting here
           ),
         ),
       );
@@ -462,7 +557,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
               _hasTrailer = true;
             });
 
-            // Start the timer to play trailer after 5 seconds
+            // Start the timer to play trailer after 3 seconds (reduced from 5)
             _startTrailerTimer();
           }
         }
@@ -477,8 +572,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
 
   void _startTrailerTimer() {
     _trailerTimer?.cancel();
-    _trailerTimer = Timer(const Duration(seconds: 5), () {
-      if (mounted && _hasTrailer) {
+    _trailerTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && _hasTrailer && !_isTrailerPlaying) {
         _playTrailer();
       }
     });
@@ -486,64 +581,72 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
 
   void _playTrailer() async {
     try {
-      // For YouTube videos, we need to use a different approach
-      // This is a simplified implementation - in production you might want to use a package like youtube_player_flutter
-      // or extract the direct video URL from YouTube
-      final directVideoUrl = await _getDirectVideoUrl(_trailerUrl!);
+      if (_trailerUrl == null) return;
 
-      if (directVideoUrl == null) {
-        print('Could not extract direct video URL from YouTube');
+      // Extract video ID from YouTube URL
+      final videoId = VideoId(_trailerUrl!);
+
+      // Get stream manifest
+      final manifest = await _yt.videos.streamsClient.getManifest(videoId);
+
+      // Get the best quality stream (prefer mp4)
+      final streamInfo = manifest.muxed
+          .where((stream) => stream.container.name == 'mp4')
+          .withHighestBitrate();
+
+      if (streamInfo == null) {
+        print('No suitable stream found for trailer');
         return;
       }
 
-      await _trailerController.dispose();
+      // Dispose previous controller if it exists
+      await _trailerController?.dispose();
+
+      final newController =
+          VideoPlayerController.network(streamInfo.url.toString())
+            ..setLooping(true)
+            ..setVolume(0);
 
       setState(() {
-        _trailerController = VideoPlayerController.network(directVideoUrl)
-          ..setLooping(true)
-          ..setVolume(0);
-
-        _trailerController.addListener(_checkBufferingProgress);
+        _trailerController = newController;
+        _trailerController?.addListener(_checkBufferingProgress);
       });
 
-      await _trailerController.initialize();
+      await _trailerController?.initialize();
 
       setState(() {
         _isTrailerPlaying = true;
         _isTrailerMuted = true;
       });
 
-      _trailerController.play();
+      _trailerController?.play();
     } catch (e) {
       print('Failed to play trailer: $e');
+      // Fallback: try to show poster image
+      setState(() {
+        _hasTrailer = false;
+        _isTrailerPlaying = false;
+      });
     }
   }
 
-  // This is a simplified method - in a real app, you'd need a proper way to extract direct URLs
-  Future<String?> _getDirectVideoUrl(String youtubeUrl) async {
-    // This is a placeholder - you would need to implement a proper method
-    // to extract direct video URLs from YouTube, possibly using a backend service
-    return null;
-  }
-
   void _checkBufferingProgress() {
-    if (_trailerController.value.isInitialized) {
-      final buffered = _trailerController.value.buffered;
-      final duration = _trailerController.value.duration;
+    if (_trailerController?.value.isInitialized == true) {
+      final buffered = _trailerController!.value.buffered;
+      final duration = _trailerController!.value.duration;
 
-      if (duration.inMilliseconds > 0) {
-        double totalBuffered = 0;
-        for (final range in buffered) {
-          totalBuffered += range.end.inMilliseconds;
-        }
-
-        final percentage = totalBuffered / duration.inMilliseconds;
+      if (duration.inMilliseconds > 0 && buffered.isNotEmpty) {
+        // Get the most recent buffered range
+        final latestBuffered = buffered.last;
+        final percentage =
+            latestBuffered.end.inMilliseconds / duration.inMilliseconds;
 
         setState(() {
           _bufferedPercentage = percentage;
         });
 
-        if (percentage >= 0.02 && !_isTrailerBuffered) {
+        // Reduce threshold to 1% for faster trailer display
+        if (percentage >= 0.01 && !_isTrailerBuffered) {
           setState(() {
             _isTrailerBuffered = true;
           });
@@ -725,30 +828,66 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   }
 
   Widget _buildTitleSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          widget.movie.title,
-          style: GoogleFonts.nunito(
-            color: Colors.white,
-            fontSize: 32,
-            fontWeight: FontWeight.w800,
-            height: 1.2,
-          ),
-        ),
-        if (widget.movie.originalTitle != widget.movie.title) ...[
-          const SizedBox(height: 8),
-          Text(
-            widget.movie.originalTitle ?? '',
-            style: GoogleFonts.nunito(
-              color: Colors.grey[400],
-              fontSize: 18,
-              fontStyle: FontStyle.italic,
+    return SlideTransition(
+      position: _slideAnimation,
+      child: ScaleTransition(
+        scale: _scaleAnimation,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    const Color.fromARGB(255, 73, 54, 244).withOpacity(0.1),
+                    Colors.purple.withOpacity(0.05),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: const Color.fromARGB(
+                    255,
+                    73,
+                    54,
+                    244,
+                  ).withOpacity(0.2),
+                  width: 1,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.movie.title,
+                    style: GoogleFonts.nunito(
+                      color: Colors.white,
+                      fontSize: 32,
+                      fontWeight: FontWeight.w900,
+                      height: 1.2,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  if (widget.movie.originalTitle != widget.movie.title) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      widget.movie.originalTitle ?? '',
+                      style: GoogleFonts.nunito(
+                        color: Colors.grey[400],
+                        fontSize: 18,
+                        fontStyle: FontStyle.italic,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
-          ),
-        ],
-      ],
+          ],
+        ),
+      ),
     );
   }
 
@@ -787,131 +926,228 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     required String text,
     required Color color,
   }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: 16),
-          const SizedBox(width: 6),
-          Text(
-            text,
-            style: GoogleFonts.nunito(
-              color: color,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 400),
+      tween: Tween(begin: 0.0, end: 1.0),
+      builder: (context, value, child) {
+        return Transform.scale(
+          scale: value,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [color.withOpacity(0.15), color.withOpacity(0.05)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(25),
+              border: Border.all(color: color.withOpacity(0.4), width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withOpacity(0.2),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: color, size: 16),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  text,
+                  style: GoogleFonts.nunito(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   Widget _buildPlayButton() {
-    return Column(
-      children: [
-        // Main action buttons row
-        Row(
-          children: [
-            // Play button (expanded to take most space)
-            Expanded(
-              flex: 3,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                child: ElevatedButton.icon(
-                  onPressed: _isFetching ? null : _fetchStream,
-                  icon: _isFetching
-                      ? SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.white,
+    return SlideTransition(
+      position: _slideAnimation,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: TweenAnimationBuilder<double>(
+                  duration: const Duration(milliseconds: 500),
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  builder: (context, value, child) {
+                    return Transform.scale(
+                      scale: value,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          gradient: LinearGradient(
+                            colors: _hasWatchProgress
+                                ? [
+                                    const Color(0xFF059200),
+                                    const Color(0xFF07B600),
+                                  ]
+                                : [
+                                    const Color.fromARGB(255, 73, 54, 244),
+                                    const Color.fromARGB(255, 100, 85, 255),
+                                  ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color:
+                                  (_hasWatchProgress
+                                          ? const Color(0xFF059200)
+                                          : const Color.fromARGB(
+                                              255,
+                                              73,
+                                              54,
+                                              244,
+                                            ))
+                                      .withOpacity(0.4),
+                              blurRadius: 20,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: ElevatedButton.icon(
+                          onPressed: _isFetching ? null : _fetchStream,
+                          icon: _isFetching
+                              ? SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : Icon(
+                                  _hasWatchProgress
+                                      ? Icons.play_circle_filled
+                                      : Icons.play_arrow_rounded,
+                                  size: 28,
+                                ),
+                          label: Text(
+                            _isFetching
+                                ? 'Finding Streams...'
+                                : _hasWatchProgress
+                                ? 'Continue Watching'
+                                : 'Play Movie',
+                            style: GoogleFonts.nunito(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5,
                             ),
                           ),
-                        )
-                      : Icon(
-                          _hasWatchProgress
-                              ? Icons.queue_play_next_outlined
-                              : Icons.play_arrow,
-                          size: 24,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 32,
+                              vertical: 18,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            elevation: 0,
+                            shadowColor: Colors.transparent,
+                          ),
                         ),
-                  label: Text(
-                    _isFetching
-                        ? 'Finding Stream...'
-                        : _hasWatchProgress
-                        ? 'Continue Watching'
-                        : 'Play Movie',
-                    style: GoogleFonts.nunito(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _hasWatchProgress
-                        ? const Color.fromARGB(255, 9, 255, 0)
-                        : const Color.fromARGB(255, 73, 54, 244),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 16,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 8,
-                    shadowColor:
-                        (_hasWatchProgress
-                                ? Colors.orange
-                                : const Color.fromARGB(255, 54, 184, 244))
-                            .withOpacity(0.3),
-                  ),
+                      ),
+                    );
+                  },
                 ),
               ),
-            ),
-
-            const SizedBox(width: 12),
-
-            // Save button
-            ScaleTransition(
-              scale: _saveAnimation,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: _isSaved
-                      ? Colors.red.withOpacity(0.1)
-                      : Colors.grey.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: _isSaved
-                        ? Colors.red.withOpacity(0.3)
-                        : Colors.grey.withOpacity(0.3),
-                  ),
-                ),
-                child: IconButton(
-                  onPressed: _toggleSaveMovie,
-                  icon: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child: Icon(
-                      _isSaved ? Icons.bookmark : Icons.bookmark_border,
-                      key: ValueKey(_isSaved),
-                      color: _isSaved ? Colors.red : Colors.grey[400],
-                      size: 28,
-                    ),
-                  ),
-                  tooltip: _isSaved ? 'Remove from saved' : 'Save movie',
-                  padding: const EdgeInsets.all(16),
+              const SizedBox(width: 12),
+              ScaleTransition(
+                scale: _saveAnimation,
+                child: TweenAnimationBuilder<double>(
+                  duration: const Duration(milliseconds: 500),
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  builder: (context, value, child) {
+                    return Transform.scale(
+                      scale: value,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: _isSaved
+                                ? [
+                                    Colors.red.withOpacity(0.2),
+                                    Colors.red.withOpacity(0.1),
+                                  ]
+                                : [
+                                    Colors.grey.withOpacity(0.2),
+                                    Colors.grey.withOpacity(0.1),
+                                  ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: _isSaved
+                                ? Colors.red.withOpacity(0.5)
+                                : Colors.grey.withOpacity(0.3),
+                            width: 1.5,
+                          ),
+                          boxShadow: _isSaved
+                              ? [
+                                  BoxShadow(
+                                    color: Colors.red.withOpacity(0.3),
+                                    blurRadius: 15,
+                                    offset: const Offset(0, 5),
+                                  ),
+                                ]
+                              : [],
+                        ),
+                        child: IconButton(
+                          onPressed: _toggleSaveMovie,
+                          icon: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 300),
+                            transitionBuilder: (child, animation) {
+                              return ScaleTransition(
+                                scale: animation,
+                                child: child,
+                              );
+                            },
+                            child: Icon(
+                              _isSaved ? Icons.bookmark : Icons.bookmark_border,
+                              key: ValueKey(_isSaved),
+                              color: _isSaved ? Colors.red : Colors.grey[400],
+                              size: 28,
+                            ),
+                          ),
+                          tooltip: _isSaved
+                              ? 'Remove from saved'
+                              : 'Save movie',
+                          padding: const EdgeInsets.all(16),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
-            ),
-          ],
-        ),
-      ],
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -981,36 +1217,78 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
   Widget _buildOverviewSection() {
     if (widget.movie.overview?.isEmpty ?? true) return const SizedBox.shrink();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Overview',
-          style: GoogleFonts.nunito(
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
+    return SlideTransition(
+      position: _slideAnimation,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 4,
+                height: 28,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      const Color.fromARGB(255, 73, 54, 244),
+                      Colors.purple,
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Overview',
+                style: GoogleFonts.nunito(
+                  color: Colors.white,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.5,
+                ),
+              ),
+            ],
           ),
-        ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.grey[900]?.withOpacity(0.5),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey[800]!),
-          ),
-          child: Text(
-            widget.movie.overview!,
-            style: GoogleFonts.nunito(
-              color: Colors.grey[300],
-              fontSize: 16,
-              height: 1.6,
-              fontWeight: FontWeight.w400,
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.grey[900]!.withOpacity(0.6),
+                  Colors.grey[900]!.withOpacity(0.3),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Colors.grey[800]!.withOpacity(0.5),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Text(
+              widget.movie.overview!,
+              style: GoogleFonts.nunito(
+                color: Colors.grey[200],
+                fontSize: 16,
+                height: 1.7,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0.2,
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

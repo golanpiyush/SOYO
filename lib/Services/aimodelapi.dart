@@ -5,7 +5,7 @@ import 'package:soyo/models/savedmoviesmodel.dart';
 
 class SoyoAiApi {
   static const String _apiKey =
-      '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';
+      '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';
   static const String _apiUrl = 'https://openrouter.ai/api/v1/chat/completions';
 
   static String _buildSystemPrompt(List<SavedMovie> savedMovies) {
@@ -146,7 +146,7 @@ You can suggest movies from any genre, era, or country. Always maintain a friend
           'X-Title': 'SoyO AI Movie Chat',
         },
         body: json.encode({
-          'model': 'agentica-org/deepcoder-14b-preview:free',
+          'model': 'meta-llama/llama-3.3-8b-instruct:free',
           'messages': messages,
           'temperature': 0.7,
           'max_tokens': 500,

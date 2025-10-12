@@ -1,410 +1,544 @@
-// import 'dart:convert';
-// import 'package:http/http.dart' as http;
-// import 'package:soyo/models/moviemodel.dart';
+import 'dart:convert';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:http/http.dart' as http;
+import 'package:soyo/models/moviecollections.dart';
 
-// class CollectionsApi {
-//   static const String baseUrl =
-//       'https://themoviedb.hexa.watch/api/tmdb/collection';
-//   static const String streamDbUrl = 'https://streamdb.online/api/content';
+class CollectionsApiService {
+  static const String _baseUrl = 'https://db.cineby.app/3';
+  static const String _apiKey = 'ad301b7cc82ffe19273e55e4d4206885';
+  static const String _imageBaseUrl = 'https://image.tmdb.org/t/p';
 
-//   // Collection IDs and their names for TMDB
-//   static const Map<int, String> collectionIds = {
-//     528: 'The Terminator Collection',
-//     295: 'Pirates of the Caribbean Collection',
-//     87359: 'Mission: Impossible Collection',
-//     645: 'James Bond Collection',
-//     2980: 'The Godfather Collection',
-//     10: 'Star Wars Collection',
-//     328: 'Jurassic Park Collection',
-//     263: 'The Dark Knight Collection',
-//     556: 'Spider-Man Collection',
-//     119: 'The Lord of the Rings Collection',
-//     9485: 'The Fast and the Furious Collection',
-//     86066: 'The Avengers Collection',
-//     313086: 'The Conjuring Collection',
-//     151: 'Rocky Collection',
-//     121938: 'The Hunger Games Collection',
-//     131296: 'X-Men Collection',
-//     1570: 'Die Hard Collection',
-//     1241: 'Harry Potter Collection',
-//   };
+  // Cache duration: 3 days
+  static const Duration _cacheDuration = Duration(days: 3);
 
-//   // StreamDB Categories
-//   static const Map<String, String> streamDbCategories = {
-//     'hindi-movies': 'Hindi Movies',
-//     'english-movies': 'English Movies',
-//     'punjabi-movies': 'Punjabi Movies',
-//     'tamil-movies': 'Tamil Movies',
-//     'telugu-movies': 'Telugu Movies',
-//     'malayalam-movies': 'Malayalam Movies',
-//     'bengali-movies': 'Bengali Movies',
-//     'gujarati-movies': 'Gujarati Movies',
-//     'marathi-movies': 'Marathi Movies',
-//   };
+  // Popular collection IDs
+  static const Map<int, String> popularCollections = {
+    528: 'The Terminator Collection',
+    295: 'Pirates of the Caribbean Collection',
+    87359: 'Mission: Impossible Collection',
+    645: 'James Bond Collection',
+    2980: 'The Godfather Collection',
+    10: 'Star Wars Collection',
+    328: 'Jurassic Park Collection',
+    263: 'The Dark Knight Collection',
+    556: 'Spider-Man Collection',
+    119: 'The Lord of the Rings Collection',
+    9485: 'The Fast and the Furious Collection',
+    86066: 'The Avengers Collection',
+    313086: 'The Conjuring Collection',
+    151: 'Rocky Collection',
+    121938: 'The Hunger Games Collection',
+    131296: 'X-Men Collection',
+    1570: 'Die Hard Collection',
+    1241: 'Harry Potter Collection',
+  };
 
-//   // TMDB Collection Methods
-//   Future<Map<String, dynamic>?> getCollection(int collectionId) async {
-//     try {
-//       final response = await http.get(
-//         Uri.parse('$baseUrl/$collectionId'),
-//         headers: {
-//           'Accept': 'application/json',
-//           'Content-Type': 'application/json',
-//         },
-//       );
+  // Cache helper methods
+  static Future<String> _getCacheDir() async {
+    final directory = await getApplicationDocumentsDirectory();
+    final cacheDir = Directory('${directory.path}/collections_cache');
+    if (!await cacheDir.exists()) {
+      await cacheDir.create(recursive: true);
+    }
+    return cacheDir.path;
+  }
 
-//       if (response.statusCode == 200) {
-//         return json.decode(response.body);
-//       } else {
-//         print(
-//           'Failed to fetch collection $collectionId: ${response.statusCode}',
-//         );
-//         return null;
-//       }
-//     } catch (e) {
-//       print('Error fetching collection $collectionId: $e');
-//       return null;
-//     }
-//   }
+  static Future<File> _getCacheFile(String key) async {
+    final cacheDir = await _getCacheDir();
+    return File('$cacheDir/$key.json');
+  }
 
-//   Future<List<Movie>> getCollectionMovies(int collectionId) async {
-//     try {
-//       final collectionData = await getCollection(collectionId);
-//       if (collectionData == null) return [];
+  static Future<bool> _isCacheValid(File cacheFile) async {
+    if (!await cacheFile.exists()) return false;
 
-//       final parts = collectionData['parts'] as List<dynamic>? ?? [];
+    final stat = await cacheFile.stat();
+    final age = DateTime.now().difference(stat.modified);
+    return age < _cacheDuration;
+  }
 
-//       return parts.map((part) {
-//         return Movie(
-//           id: part['id'] ?? 0,
-//           title: part['title'] ?? part['original_title'] ?? 'Unknown Title',
-//           overview: part['overview'] ?? '',
-//           releaseDate: part['release_date'] ?? '',
-//           posterPath: part['poster_path'] ?? '',
-//           backdropPath: part['backdrop_path'] ?? '',
-//           voteAverage: (part['vote_average'] ?? 0.0).toDouble(),
-//           voteCount: part['vote_count'] ?? 0,
-//           popularity: (part['popularity'] ?? 0.0).toDouble(),
-//           genreIds: List<int>.from(part['genre_ids'] ?? []),
-//         );
-//       }).toList();
-//     } catch (e) {
-//       print('Error processing collection $collectionId movies: $e');
-//       return [];
-//     }
-//   }
+  static Future<T?> _getCachedData<T>(
+    String key,
+    T Function(Map<String, dynamic>) fromJson,
+  ) async {
+    try {
+      final cacheFile = await _getCacheFile(key);
 
-//   Future<Map<String, List<Movie>>> getAllCollections() async {
-//     Map<String, List<Movie>> collections = {};
+      if (await _isCacheValid(cacheFile)) {
+        final content = await cacheFile.readAsString();
+        final jsonData = json.decode(content) as Map<String, dynamic>;
+        return fromJson(jsonData);
+      }
+    } catch (e) {
+      print('Error reading cache for $key: $e');
+    }
+    return null;
+  }
 
-//     // Process collections in batches to avoid overwhelming the API
-//     final collectionEntries = collectionIds.entries.toList();
+  static Future<List<T>?> _getCachedList<T>(
+    String key,
+    T Function(Map<String, dynamic>) fromJson,
+  ) async {
+    try {
+      final cacheFile = await _getCacheFile(key);
 
-//     for (int i = 0; i < collectionEntries.length; i += 3) {
-//       final batch = collectionEntries.skip(i).take(3);
+      if (await _isCacheValid(cacheFile)) {
+        final content = await cacheFile.readAsString();
+        final jsonData = json.decode(content) as List<dynamic>;
+        return jsonData
+            .map((item) => fromJson(item as Map<String, dynamic>))
+            .toList();
+      }
+    } catch (e) {
+      print('Error reading cache list for $key: $e');
+    }
+    return null;
+  }
 
-//       final futures = batch.map((entry) async {
-//         final movies = await getCollectionMovies(entry.key);
-//         if (movies.isNotEmpty) {
-//           collections[entry.value] = movies;
-//         }
-//       });
+  static Future<void> _cacheData(String key, dynamic data) async {
+    try {
+      final cacheFile = await _getCacheFile(key);
+      final jsonData = json.encode(data);
+      await cacheFile.writeAsString(jsonData);
+    } catch (e) {
+      print('Error caching data for $key: $e');
+    }
+  }
 
-//       await Future.wait(futures);
+  static Future<List<MovieCollection>> searchCollectionsByName(
+    String query,
+  ) async {
+    if (query.trim().isEmpty) return [];
 
-//       // Small delay between batches to be respectful to the API
-//       if (i + 3 < collectionEntries.length) {
-//         await Future.delayed(Duration(milliseconds: 500));
-//       }
-//     }
+    final cacheKey = 'search_${query.toLowerCase().replaceAll(' ', '_')}';
 
-//     return collections;
-//   }
+    // Try to get from cache first
+    final cached = await _getCachedList(
+      cacheKey,
+      (json) => MovieCollection.fromJson(json),
+    );
+    if (cached != null) {
+      print('Using cached search results for: $query');
+      return cached;
+    }
 
-//   Future<Map<String, dynamic>?> getCollectionDetails(int collectionId) async {
-//     return await getCollection(collectionId);
-//   }
+    try {
+      final url = Uri.parse(
+        '$_baseUrl/search/collection?api_key=$_apiKey&query=${Uri.encodeComponent(query)}',
+      );
+      final response = await http.get(url);
 
-//   // Get featured collections (subset of all collections)
-//   Future<Map<String, List<Movie>>> getFeaturedCollections() async {
-//     final featuredIds = [
-//       86066,
-//       313086,
-//       1241,
-//       87359,
-//       10,
-//       328,
-//     ]; // Avengers, Conjuring, Harry Potter, Mission Impossible, Star Wars, Jurassic Park
-//     Map<String, List<Movie>> featuredCollections = {};
+      if (response.statusCode == 200) {
+        final jsonData = json.decode(response.body);
+        final List<dynamic> results = jsonData['results'] ?? [];
 
-//     for (int collectionId in featuredIds) {
-//       final collectionName = collectionIds[collectionId];
-//       if (collectionName != null) {
-//         final movies = await getCollectionMovies(collectionId);
-//         if (movies.isNotEmpty) {
-//           featuredCollections[collectionName] = movies;
-//         }
-//       }
-//     }
+        List<MovieCollection> collections = [];
 
-//     return featuredCollections;
-//   }
+        // Fetch detailed information for each collection found
+        for (var result in results) {
+          final collectionId = result['id'];
+          final detailedCollection = await getCollection(collectionId);
+          if (detailedCollection != null) {
+            collections.add(detailedCollection);
+          }
+        }
 
-//   // Search collections by name
-//   Future<Map<String, List<Movie>>> searchCollections(String query) async {
-//     final allCollections = await getAllCollections();
-//     final filteredCollections = <String, List<Movie>>{};
+        // Cache the results
+        await _cacheData(cacheKey, collections.map((c) => c.toJson()).toList());
+        print('Cached search results for: $query');
 
-//     for (final entry in allCollections.entries) {
-//       if (entry.key.toLowerCase().contains(query.toLowerCase())) {
-//         filteredCollections[entry.key] = entry.value;
-//       }
-//     }
+        return collections;
+      } else {
+        print('Failed to search collections: ${response.statusCode}');
+        return [];
+      }
+    } catch (e) {
+      print('Error searching collections: $e');
+      return [];
+    }
+  }
 
-//     return filteredCollections;
-//   }
+  // Get a specific collection by ID
+  static Future<MovieCollection?> getCollection(int collectionId) async {
+    final cacheKey = 'collection_$collectionId';
 
-//   // StreamDB Methods
-//   Future<Map<String, dynamic>?> getStreamDbContent({
-//     String? category,
-//     bool published = true,
-//     int limit = 10,
-//     int page = 1,
-//     String sortBy = 'created_at',
-//     String sortOrder = 'desc',
-//     String? search,
-//   }) async {
-//     try {
-//       final queryParams = <String, String>{
-//         'published': published.toString(),
-//         'limit': limit.toString(),
-//         'page': page.toString(),
-//         'sort_by': sortBy,
-//         'sort_order': sortOrder,
-//       };
+    // Try to get from cache first
+    final cached = await _getCachedData(
+      cacheKey,
+      (json) => MovieCollection.fromJson(json),
+    );
+    if (cached != null) {
+      print('Using cached collection: $collectionId');
+      return cached;
+    }
 
-//       if (category != null) {
-//         queryParams['category'] = category;
-//       }
+    try {
+      final url = Uri.parse(
+        '$_baseUrl/collection/$collectionId?api_key=$_apiKey',
+      );
+      final response = await http.get(url);
 
-//       if (search != null && search.isNotEmpty) {
-//         queryParams['search'] = search;
-//       }
+      if (response.statusCode == 200) {
+        final jsonData = json.decode(response.body);
+        final collection = MovieCollection.fromJson(jsonData);
 
-//       final uri = Uri.parse(streamDbUrl).replace(queryParameters: queryParams);
+        // Cache the result
+        await _cacheData(cacheKey, jsonData);
+        print('Cached collection: $collectionId');
 
-//       final response = await http.get(
-//         uri,
-//         headers: {
-//           'Accept': 'application/json',
-//           'Content-Type': 'application/json',
-//         },
-//       );
+        return collection;
+      } else {
+        print('Failed to load collection: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      print('Error fetching collection: $e');
+      return null;
+    }
+  }
 
-//       if (response.statusCode == 200) {
-//         final data = json.decode(response.body);
-//         if (data['success'] == true) {
-//           return data;
-//         } else {
-//           print('StreamDB API returned success: false');
-//           return null;
-//         }
-//       } else {
-//         print('Failed to fetch StreamDB content: ${response.statusCode}');
-//         return null;
-//       }
-//     } catch (e) {
-//       print('Error fetching StreamDB content: $e');
-//       return null;
-//     }
-//   }
+  // Get multiple collections by IDs
+  static Future<List<MovieCollection>> getCollections(
+    List<int> collectionIds,
+  ) async {
+    final List<MovieCollection> collections = [];
 
-//   Future<List<Movie>> getStreamDbMovies({
-//     String? category,
-//     bool published = true,
-//     int limit = 10,
-//     int page = 1,
-//     String sortBy = 'created_at',
-//     String sortOrder = 'desc',
-//     String? search,
-//   }) async {
-//     try {
-//       final response = await getStreamDbContent(
-//         category: category,
-//         published: published,
-//         limit: limit,
-//         page: page,
-//         sortBy: sortBy,
-//         sortOrder: sortOrder,
-//         search: search,
-//       );
+    for (final id in collectionIds) {
+      final collection = await getCollection(id);
+      if (collection != null) {
+        collections.add(collection);
+      }
+    }
 
-//       if (response == null) return [];
+    return collections;
+  }
 
-//       final data = response['data'] as List<dynamic>? ?? [];
+  // Get all popular collections
+  static Future<List<MovieCollection>> getPopularCollections() async {
+    const cacheKey = 'popular_collections';
 
-//       return data.map((item) {
-//         return Movie(
-//           id: int.tryParse(item['tmdbId']?.toString() ?? '0') ?? 0,
-//           title: item['title'] ?? 'Unknown Title',
-//           overview: item['description'] ?? '',
-//           releaseDate: item['year']?.toString() ?? '',
-//           posterPath: _extractImagePath(
-//             item['posterUrl'] ?? item['image'] ?? '',
-//           ),
-//           backdropPath: _extractImagePath(
-//             item['coverImage'] ?? item['cover_image'] ?? '',
-//           ),
-//           voteAverage:
-//               double.tryParse(item['imdbRating']?.toString() ?? '0') ?? 0.0,
-//           voteCount: 0, // Not available in StreamDB
-//           popularity: 0.0, // Not available in StreamDB
-//           genreIds: _parseGenres(item['genres']),
-//           // Additional StreamDB specific fields could be stored in a custom field
-//           // or you could extend the Movie model to include them
-//         );
-//       }).toList();
-//     } catch (e) {
-//       print('Error processing StreamDB movies: $e');
-//       return [];
-//     }
-//   }
+    // Try to get from cache first
+    final cached = await _getCachedList(
+      cacheKey,
+      (json) => MovieCollection.fromJson(json),
+    );
+    if (cached != null) {
+      print('Using cached popular collections');
+      return cached;
+    }
 
-//   Future<Map<String, List<Movie>>> getStreamDbCollections() async {
-//     Map<String, List<Movie>> collections = {};
+    final collections = await getCollections(popularCollections.keys.toList());
 
-//     for (final entry in streamDbCategories.entries) {
-//       final movies = await getStreamDbMovies(category: entry.value, limit: 20);
+    // Cache the results
+    if (collections.isNotEmpty) {
+      await _cacheData(cacheKey, collections.map((c) => c.toJson()).toList());
+      print('Cached popular collections');
+    }
 
-//       if (movies.isNotEmpty) {
-//         collections[entry.value] = movies;
-//       }
+    return collections;
+  }
 
-//       // Small delay between requests
-//       await Future.delayed(Duration(milliseconds: 300));
-//     }
+  // Get collections by genre (based on movies in collection)
+  static Future<List<MovieCollection>> getCollectionsByGenre(
+    List<int> genreIds,
+  ) async {
+    final cacheKey = 'genre_${genreIds.join('_')}';
 
-//     return collections;
-//   }
+    // Try to get from cache first
+    final cached = await _getCachedList(
+      cacheKey,
+      (json) => MovieCollection.fromJson(json),
+    );
+    if (cached != null) {
+      print('Using cached genre collections: ${genreIds.join(', ')}');
+      return cached;
+    }
 
-//   Future<List<Movie>> getLatestStreamDbMovies({int limit = 10}) async {
-//     return await getStreamDbMovies(
-//       limit: limit,
-//       sortBy: 'created_at',
-//       sortOrder: 'desc',
-//     );
-//   }
+    final allCollections = await getPopularCollections();
 
-//   Future<List<Movie>> getPopularStreamDbMovies({int limit = 10}) async {
-//     return await getStreamDbMovies(
-//       limit: limit,
-//       sortBy: 'imdb_rating',
-//       sortOrder: 'desc',
-//     );
-//   }
+    final filteredCollections = allCollections.where((collection) {
+      return collection.parts.any(
+        (movie) => movie.genreIds.any((genreId) => genreIds.contains(genreId)),
+      );
+    }).toList();
 
-//   Future<List<Movie>> searchStreamDbMovies(
-//     String query, {
-//     int limit = 20,
-//   }) async {
-//     return await getStreamDbMovies(search: query, limit: limit);
-//   }
+    // Cache the results
+    if (filteredCollections.isNotEmpty) {
+      await _cacheData(
+        cacheKey,
+        filteredCollections.map((c) => c.toJson()).toList(),
+      );
+      print('Cached genre collections: ${genreIds.join(', ')}');
+    }
 
-//   // Combined Methods (TMDB + StreamDB)
-//   Future<Map<String, List<Movie>>> getCombinedCollections() async {
-//     final tmdbCollections = await getAllCollections();
-//     final streamDbCollections = await getStreamDbCollections();
+    return filteredCollections;
+  }
 
-//     // Merge both collections
-//     final combined = <String, List<Movie>>{};
-//     combined.addAll(tmdbCollections);
-//     combined.addAll(streamDbCollections);
+  // Search collections by name
+  static Future<List<MovieCollection>> searchCollections(String query) async {
+    final cacheKey = 'local_search_${query.toLowerCase().replaceAll(' ', '_')}';
 
-//     return combined;
-//   }
+    // Try to get from cache first
+    final cached = await _getCachedList(
+      cacheKey,
+      (json) => MovieCollection.fromJson(json),
+    );
+    if (cached != null) {
+      print('Using cached local search: $query');
+      return cached;
+    }
 
-//   Future<List<Movie>> getCombinedLatestMovies({int limit = 20}) async {
-//     final streamDbMovies = await getLatestStreamDbMovies(limit: limit ~/ 2);
-//     final tmdbMovies = await getCollectionMovies(86066); // Avengers as example
+    final allCollections = await getPopularCollections();
 
-//     final combined = <Movie>[];
-//     combined.addAll(streamDbMovies);
-//     combined.addAll(tmdbMovies.take(limit ~/ 2));
+    final results = allCollections
+        .where(
+          (collection) =>
+              collection.name.toLowerCase().contains(query.toLowerCase()),
+        )
+        .toList();
 
-//     return combined.take(limit).toList();
-//   }
+    // Cache the results
+    if (results.isNotEmpty) {
+      await _cacheData(cacheKey, results.map((c) => c.toJson()).toList());
+      print('Cached local search: $query');
+    }
 
-//   // Helper methods
-//   String _extractImagePath(String fullUrl) {
-//     if (fullUrl.isEmpty) return '';
+    return results;
+  }
 
-//     // Extract the path from full TMDB URL
-//     if (fullUrl.startsWith('https://image.tmdb.org/t/p/')) {
-//       final parts = fullUrl.split('/');
-//       if (parts.length >= 2) {
-//         return '/${parts.last}';
-//       }
-//     }
+  // Get trending collections (sorted by average popularity of movies)
+  static Future<List<MovieCollection>> getTrendingCollections() async {
+    const cacheKey = 'trending_collections';
 
-//     return fullUrl;
-//   }
+    // Try to get from cache first
+    final cached = await _getCachedList(
+      cacheKey,
+      (json) => MovieCollection.fromJson(json),
+    );
+    if (cached != null) {
+      print('Using cached trending collections');
+      return cached;
+    }
 
-//   List<int> _parseGenres(dynamic genres) {
-//     if (genres == null) return [];
+    final collections = await getPopularCollections();
 
-//     if (genres is List) {
-//       // If it's already a list of genre names, we'd need a genre mapping
-//       // For now, return empty list since we don't have genre ID mapping for StreamDB
-//       return [];
-//     }
+    collections.sort((a, b) {
+      final aAvgPopularity = a.parts.isEmpty
+          ? 0.0
+          : a.parts.fold(0.0, (sum, movie) => sum + movie.popularity) /
+                a.parts.length;
+      final bAvgPopularity = b.parts.isEmpty
+          ? 0.0
+          : b.parts.fold(0.0, (sum, movie) => sum + movie.popularity) /
+                b.parts.length;
 
-//     return [];
-//   }
+      return bAvgPopularity.compareTo(aAvgPopularity);
+    });
 
-//   // Pagination support for StreamDB
-//   Future<Map<String, dynamic>> getStreamDbContentWithPagination({
-//     String? category,
-//     bool published = true,
-//     int limit = 10,
-//     int page = 1,
-//     String sortBy = 'created_at',
-//     String sortOrder = 'desc',
-//     String? search,
-//   }) async {
-//     final response = await getStreamDbContent(
-//       category: category,
-//       published: published,
-//       limit: limit,
-//       page: page,
-//       sortBy: sortBy,
-//       sortOrder: sortOrder,
-//       search: search,
-//     );
+    // Cache the results
+    if (collections.isNotEmpty) {
+      await _cacheData(cacheKey, collections.map((c) => c.toJson()).toList());
+      print('Cached trending collections');
+    }
 
-//     if (response == null) {
-//       return {
-//         'movies': <Movie>[],
-//         'pagination': {
-//           'page': page,
-//           'limit': limit,
-//           'total': 0,
-//           'totalPages': 0,
-//           'hasNext': false,
-//           'hasPrev': false,
-//         },
-//       };
-//     }
+    return collections;
+  }
 
-//     final movies = await getStreamDbMovies(
-//       category: category,
-//       published: published,
-//       limit: limit,
-//       page: page,
-//       sortBy: sortBy,
-//       sortOrder: sortOrder,
-//       search: search,
-//     );
+  // Get top rated collections
+  static Future<List<MovieCollection>> getTopRatedCollections() async {
+    const cacheKey = 'top_rated_collections';
 
-//     return {'movies': movies, 'pagination': response['pagination'] ?? {}};
-//   }
-// }
+    // Try to get from cache first
+    final cached = await _getCachedList(
+      cacheKey,
+      (json) => MovieCollection.fromJson(json),
+    );
+    if (cached != null) {
+      print('Using cached top rated collections');
+      return cached;
+    }
+
+    final collections = await getPopularCollections();
+
+    collections.sort((a, b) => b.averageRating.compareTo(a.averageRating));
+
+    // Cache the results
+    if (collections.isNotEmpty) {
+      await _cacheData(cacheKey, collections.map((c) => c.toJson()).toList());
+      print('Cached top rated collections');
+    }
+
+    return collections;
+  }
+
+  // Get recently updated collections (collections with recent movie releases)
+  static Future<List<MovieCollection>> getRecentlyUpdatedCollections() async {
+    const cacheKey = 'recently_updated_collections';
+
+    // Try to get from cache first
+    final cached = await _getCachedList(
+      cacheKey,
+      (json) => MovieCollection.fromJson(json),
+    );
+    if (cached != null) {
+      print('Using cached recently updated collections');
+      return cached;
+    }
+
+    final collections = await getPopularCollections();
+
+    final results = collections
+        .where(
+          (collection) =>
+              collection.parts.any((movie) => movie.isRecentRelease),
+        )
+        .toList();
+
+    // Cache the results
+    if (results.isNotEmpty) {
+      await _cacheData(cacheKey, results.map((c) => c.toJson()).toList());
+      print('Cached recently updated collections');
+    }
+
+    return results;
+  }
+
+  // Get collection details with additional movie information
+  static Future<MovieCollection?> getCollectionWithDetails(
+    int collectionId,
+  ) async {
+    final collection = await getCollection(collectionId);
+    if (collection == null) return null;
+
+    // You can extend this to fetch additional details for each movie
+    // such as runtime, detailed cast, etc. from individual movie endpoints
+
+    return collection;
+  }
+
+  // Utility method to get image URL
+  static String getImageUrl(String imagePath, {String size = 'w500'}) {
+    if (imagePath.isEmpty) {
+      return 'https://via.placeholder.com/500x750/333/fff?text=No+Image';
+    }
+    return '$_imageBaseUrl/$size$imagePath';
+  }
+
+  // Get collection statistics
+  static Map<String, dynamic> getCollectionStats(MovieCollection collection) {
+    final movies = collection.parts;
+    if (movies.isEmpty) {
+      return {
+        'totalMovies': 0,
+        'totalRuntime': 0,
+        'averageRating': 0.0,
+        'highestRated': null,
+        'lowestRated': null,
+        'firstRelease': null,
+        'latestRelease': null,
+      };
+    }
+
+    final sortedByRating = List<CollectionMovie>.from(movies)
+      ..sort((a, b) => b.voteAverage.compareTo(a.voteAverage));
+
+    final sortedByDate = List<CollectionMovie>.from(movies)
+      ..sort((a, b) {
+        if (a.releaseDate.isEmpty || b.releaseDate.isEmpty) return 0;
+        return DateTime.parse(
+          a.releaseDate,
+        ).compareTo(DateTime.parse(b.releaseDate));
+      });
+
+    return {
+      'totalMovies': movies.length,
+      'totalRuntime': collection.totalRuntime,
+      'averageRating': collection.averageRating,
+      'highestRated': sortedByRating.first,
+      'lowestRated': sortedByRating.last,
+      'firstRelease': sortedByDate.first,
+      'latestRelease': sortedByDate.last,
+    };
+  }
+
+  // Cache management methods
+  static Future<void> clearCache() async {
+    try {
+      final cacheDir = await _getCacheDir();
+      final directory = Directory(cacheDir);
+      if (await directory.exists()) {
+        await directory.delete(recursive: true);
+        print('Cache cleared successfully');
+      }
+    } catch (e) {
+      print('Error clearing cache: $e');
+    }
+  }
+
+  static Future<void> clearExpiredCache() async {
+    try {
+      final cacheDir = await _getCacheDir();
+      final directory = Directory(cacheDir);
+
+      if (await directory.exists()) {
+        final files = directory.listSync();
+        for (final file in files) {
+          if (file is File) {
+            final stat = await file.stat();
+            final age = DateTime.now().difference(stat.modified);
+            if (age >= _cacheDuration) {
+              await file.delete();
+              print('Deleted expired cache file: ${file.path}');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('Error clearing expired cache: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> getCacheInfo() async {
+    try {
+      final cacheDir = await _getCacheDir();
+      final directory = Directory(cacheDir);
+
+      if (!await directory.exists()) {
+        return {
+          'totalFiles': 0,
+          'totalSize': 0,
+          'oldestFile': null,
+          'newestFile': null,
+        };
+      }
+
+      final files = directory.listSync().whereType<File>().toList();
+      int totalSize = 0;
+      DateTime? oldest, newest;
+
+      for (final file in files) {
+        final stat = await file.stat();
+        totalSize += stat.size;
+
+        if (oldest == null || stat.modified.isBefore(oldest)) {
+          oldest = stat.modified;
+        }
+
+        if (newest == null || stat.modified.isAfter(newest)) {
+          newest = stat.modified;
+        }
+      }
+
+      return {
+        'totalFiles': files.length,
+        'totalSize': totalSize,
+        'totalSizeMB': (totalSize / (1024 * 1024)).toStringAsFixed(2),
+        'oldestFile': oldest?.toIso8601String(),
+        'newestFile': newest?.toIso8601String(),
+      };
+    } catch (e) {
+      print('Error getting cache info: $e');
+      return {'error': e.toString()};
+    }
+  }
+}

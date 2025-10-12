@@ -1,0 +1,12 @@
+[
+  {
+    "url": "https://cdn3.turboviplay.com/data/67210099d3e17/67210099d3e17.m3u8",
+    "discovered_by": "dom-frame-html",
+    "context": "https://turbocloud.xyz/t/67210099d3e17"
+  },
+  {
+    "url": "https://cdn128.tryletny.com/data/9/EB/67210099d3e17/67210099d3e17480.m3u8",
+    "discovered_by": "playlist-parse",
+    "context": "https://cdn3.turboviplay.com/data/67210099d3e17/67210099d3e17.m3u8"
+  }
+]

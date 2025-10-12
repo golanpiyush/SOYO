@@ -1,13 +1,33 @@
 import 'package:flutter/material.dart';
-import 'package:animated_bottom_navigation_bar/animated_bottom_navigation_bar.dart';
+import 'package:provider/provider.dart';
 import 'package:soyo/Screens/ExploreMovies.dart';
 import 'package:soyo/Screens/homescreen.dart';
 import 'package:soyo/Screens/savedscreen.dart';
 import 'package:soyo/Screens/settingsScreen.dart';
+import 'package:soyo/Services/Providers/settings_provider.dart';
+import 'package:soyo/Services/exploreapi.dart';
 import 'package:soyo/Services/update_checker_wrapper.dart';
+import 'package:soyo/Services/exploretvapi.dart';
 
-void main() {
-  runApp(UpdateCheckerWrapper(githubRepo: 'golanpiyush/SOYO', child: MyApp()));
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Load cache
+  await ExploreApi.loadCacheFromDisk();
+
+  // Initialize settings provider
+  final settingsProvider = SettingsProvider();
+  await settingsProvider.loadSettings();
+
+  runApp(
+    ChangeNotifierProvider.value(
+      value: settingsProvider,
+      child: UpdateCheckerWrapper(
+        githubRepo: 'golanpiyush/SOYO',
+        child: MyApp(),
+      ),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -33,118 +53,142 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   var _bottomNavIndex = 0;
-  late AnimationController _fabAnimationController;
-  late AnimationController _borderRadiusAnimationController;
-  late Animation<double> fabAnimation;
-  late Animation<double> borderRadiusAnimation;
-  late CurvedAnimation fabCurve;
-  late CurvedAnimation borderRadiusCurve;
-  late AnimationController _hideBottomBarAnimationController;
 
   final iconList = <IconData>[
     Icons.home,
     Icons.bookmark,
-    Icons.explore, // 👈 extra icon
+    Icons.explore,
     Icons.settings,
   ];
 
   final List<Widget> _screens = [
     HomeScreen(),
     SavedScreen(),
-    ExploreScreen(), // 👈 placeholder/new screen
+    ExploreScreen(),
     SettingsScreen(),
   ];
 
   @override
   void initState() {
     super.initState();
-
-    _fabAnimationController = AnimationController(
-      duration: Duration(milliseconds: 500),
-      vsync: this,
-    );
-    _borderRadiusAnimationController = AnimationController(
-      duration: Duration(milliseconds: 500),
-      vsync: this,
-    );
-    fabCurve = CurvedAnimation(
-      parent: _fabAnimationController,
-      curve: Interval(0.5, 1.0, curve: Curves.fastOutSlowIn),
-    );
-    borderRadiusCurve = CurvedAnimation(
-      parent: _borderRadiusAnimationController,
-      curve: Interval(0.5, 1.0, curve: Curves.fastOutSlowIn),
-    );
-
-    fabAnimation = Tween<double>(begin: 0, end: 1).animate(fabCurve);
-    borderRadiusAnimation = Tween<double>(
-      begin: 0,
-      end: 1,
-    ).animate(borderRadiusCurve);
-
-    _hideBottomBarAnimationController = AnimationController(
-      duration: Duration(milliseconds: 200),
-      vsync: this,
-    );
-
-    Future.delayed(
-      Duration(seconds: 1),
-      () => _fabAnimationController.forward(),
-    );
-    Future.delayed(
-      Duration(seconds: 1),
-      () => _borderRadiusAnimationController.forward(),
-    );
+    ExploreApi.preloadPopularContent();
+    ExploreTvApi.getAllProviderShows();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBody: true,
       body: IndexedStack(index: _bottomNavIndex, children: _screens),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.red,
-        child: Icon(Icons.search, color: Colors.white),
-        onPressed: () {
-          _fabAnimationController.reset();
-          _borderRadiusAnimationController.reset();
-          _borderRadiusAnimationController.forward();
-          _fabAnimationController.forward();
-        },
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: AnimatedBottomNavigationBar(
+      bottomNavigationBar: CustomAnimatedBottomNav(
+        currentIndex: _bottomNavIndex,
         icons: iconList,
-        activeIndex: _bottomNavIndex,
-        gapLocation: GapLocation.center,
-        notchSmoothness: NotchSmoothness.verySmoothEdge,
-        leftCornerRadius: 32,
-        rightCornerRadius: 32,
         onTap: (index) => setState(() => _bottomNavIndex = index),
-        hideAnimationController: _hideBottomBarAnimationController,
-        backgroundColor: Colors.grey[900],
-        activeColor: Colors.red,
-        inactiveColor: Colors.grey,
-        splashColor: Colors.red.withOpacity(0.3),
-        splashSpeedInMilliseconds: 300,
-        notchAndCornersAnimation: borderRadiusAnimation,
-        splashRadius: 22,
-        iconSize: 26,
-        shadow: BoxShadow(
-          offset: Offset(0, 1),
-          blurRadius: 12,
-          spreadRadius: 0.5,
-          color: Colors.black.withOpacity(0.3),
+      ),
+    );
+  }
+}
+
+class CustomAnimatedBottomNav extends StatelessWidget {
+  final int currentIndex;
+  final List<IconData> icons;
+  final Function(int) onTap;
+
+  const CustomAnimatedBottomNav({
+    Key? key,
+    required this.currentIndex,
+    required this.icons,
+    required this.onTap,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 70,
+      margin: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[900],
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 20,
+            spreadRadius: 5,
+            offset: Offset(0, 5),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(30),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: List.generate(
+            icons.length,
+            (index) => _buildNavItem(index),
+          ),
         ),
       ),
     );
   }
 
-  @override
-  void dispose() {
-    _fabAnimationController.dispose();
-    _borderRadiusAnimationController.dispose();
-    _hideBottomBarAnimationController.dispose();
-    super.dispose();
+  Widget _buildNavItem(int index) {
+    final isActive = currentIndex == index;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => onTap(index),
+        child: Container(
+          color: Colors.transparent,
+          child: AnimatedContainer(
+            duration: Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedContainer(
+                  duration: Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  height: isActive ? 4 : 0,
+                  width: 30,
+                  decoration: BoxDecoration(
+                    color: const Color.fromARGB(255, 216, 244, 54),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                SizedBox(height: 8),
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.0, end: isActive ? 1.0 : 0.0),
+                  duration: Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  builder: (context, value, child) {
+                    return Transform.scale(
+                      scale: 1.0 + (value * 0.15),
+                      child: Icon(
+                        icons[index],
+                        color: Color.lerp(Colors.grey[600], Colors.red, value),
+                        size: 26,
+                      ),
+                    );
+                  },
+                ),
+                SizedBox(height: 4),
+                AnimatedOpacity(
+                  duration: Duration(milliseconds: 300),
+                  opacity: isActive ? 1.0 : 0.0,
+                  child: Container(
+                    height: 4,
+                    width: 4,
+                    decoration: BoxDecoration(
+                      color: const Color.fromARGB(255, 60, 244, 54),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

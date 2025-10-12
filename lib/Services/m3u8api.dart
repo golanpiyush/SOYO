@@ -10,6 +10,7 @@ class M3U8Api {
     String? quality,
     bool fetchSubs = false,
     Function(String)? onStatusUpdate,
+    Function(String)? onStreamReady, // Add stream ready callback
   }) async {
     try {
       // Start the search
@@ -34,8 +35,8 @@ class M3U8Api {
         throw Exception('No search ID received');
       }
 
-      // Poll for status updates
-      return await _pollSearchStatus(searchId, onStatusUpdate);
+      // Poll for status updates with stream ready callback
+      return await _pollSearchStatus(searchId, onStatusUpdate, onStreamReady);
     } catch (e) {
       throw Exception('Search failed: $e');
     }
@@ -46,20 +47,17 @@ class M3U8Api {
     required String animeName,
     String quality = '1080',
     bool fetchSubs = false,
+    Function(String)? onStatusUpdate,
+    Function(String)? onStreamReady,
   }) async {
-    // Similar implementation to searchMovie but for anime
-    // You'll need to adapt this based on your actual API endpoint
-    // This is just a placeholder structure
-
-    final response = await http.get(
-      Uri.parse('$baseUrl/search/anime?name=$animeName&quality=$quality'),
+    // Use the same movie search since anime are treated as movies
+    return await searchMovie(
+      movieName: animeName,
+      quality: quality,
+      fetchSubs: fetchSubs,
+      onStatusUpdate: onStatusUpdate,
+      onStreamReady: onStreamReady,
     );
-
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception('Failed to search anime');
-    }
   }
 
   // In M3U8Api class
@@ -78,12 +76,68 @@ class M3U8Api {
     }
   }
 
+  Future<List<dynamic>> searchMultipleTvShows(String query) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/searchmultiples'),
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({'moviename': query, 'type': 'tv', 'max_results': 7}),
+    );
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      return data['results'];
+    } else {
+      throw Exception('Failed to search TV shows');
+    }
+  }
+
+  // Add this method to your M3U8Api class
+  Future<List<String>> fetchTvSubtitles({
+    required int tmdbId,
+    required int seasonNumber,
+    required int episodeNumber,
+    String? showTitle,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/tv/subtitles'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'tmdb_id': tmdbId,
+          'season_number': seasonNumber,
+          'episode_number': episodeNumber,
+          'title': showTitle ?? '',
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final searchId = data['search_id'];
+
+        if (searchId == null) {
+          throw Exception('No search ID received for subtitle extraction');
+        }
+
+        // Poll for subtitle extraction status
+        return await _pollSubtitleStatus(searchId);
+      } else {
+        throw Exception(
+          'Failed to start subtitle extraction: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      throw Exception('Subtitle extraction failed: $e');
+    }
+  }
+
   Future<Map<String, dynamic>> _pollSearchStatus(
     String searchId,
     Function(String)? onStatusUpdate,
+    Function(String)? onStreamReady, // New callback for immediate stream
   ) async {
     const maxAttempts = 120; // 2 minutes with 1-second intervals
     int attempts = 0;
+    bool streamSent = false; // Track if stream was already sent
 
     while (attempts < maxAttempts) {
       try {
@@ -103,6 +157,40 @@ class M3U8Api {
           onStatusUpdate(status);
         }
 
+        // Handle immediate stream ready
+        if (status == 'stream_ready' && !streamSent) {
+          final movieData = data['data'];
+          if (movieData != null && movieData['m3u8_link'] != null) {
+            streamSent = true;
+
+            // Call the stream ready callback immediately
+            if (onStreamReady != null) {
+              onStreamReady(movieData['m3u8_link']);
+            }
+
+            // Continue polling for subtitles if they're empty
+            if (movieData['subtitles'] == null ||
+                (movieData['subtitles'] as List).isEmpty) {
+              // Update status to show subtitles are loading
+              if (onStatusUpdate != null) {
+                onStatusUpdate('Stream playing, loading subtitles...');
+              }
+
+              // Continue polling for subtitles
+              await Future.delayed(Duration(seconds: 1));
+              attempts++;
+              continue;
+            } else {
+              // Stream and subtitles both available
+              return {
+                'm3u8_link': movieData['m3u8_link'],
+                'subtitles': movieData['subtitles'] ?? [],
+              };
+            }
+          }
+        }
+
+        // Handle final completion
         if (status == 'completed') {
           final movieData = data['data'];
           if (movieData == null) {
@@ -130,6 +218,53 @@ class M3U8Api {
     }
 
     throw Exception('Search timed out after 2 minutes');
+  }
+
+  // Helper method to poll subtitle extraction status
+  Future<List<String>> _pollSubtitleStatus(String searchId) async {
+    const maxAttempts = 30; // 30 seconds max
+    int attempts = 0;
+
+    while (attempts < maxAttempts) {
+      try {
+        final response = await http.get(
+          Uri.parse('$baseUrl/search/status/$searchId'),
+        );
+
+        if (response.statusCode != 200) {
+          throw Exception(
+            'Failed to get subtitle status: ${response.statusCode}',
+          );
+        }
+
+        final data = jsonDecode(response.body);
+        final status = data['status'];
+
+        if (status == 'completed') {
+          final subtitleData = data['data'];
+          if (subtitleData != null && subtitleData['subtitles'] != null) {
+            final subtitles = List<String>.from(subtitleData['subtitles']);
+            print('🎯 Found ${subtitles.length} subtitle files');
+            return subtitles;
+          }
+          return [];
+        } else if (status == 'error') {
+          throw Exception(data['error'] ?? 'Subtitle extraction error');
+        }
+
+        // Wait before next poll
+        await Future.delayed(Duration(seconds: 1));
+        attempts++;
+      } catch (e) {
+        if (attempts >= maxAttempts - 1) {
+          throw Exception('Subtitle polling failed: $e');
+        }
+        await Future.delayed(Duration(seconds: 1));
+        attempts++;
+      }
+    }
+
+    throw Exception('Subtitle extraction timed out');
   }
 
   // Alternative method using the original search endpoint (for backward compatibility)
@@ -183,7 +318,7 @@ class M3U8Api {
   Future<bool> testConnection() async {
     try {
       final response = await http
-          .get(Uri.parse(baseUrl), headers: {'Accept': 'text/html'})
+          .get(Uri.parse('$baseUrl/health'))
           .timeout(Duration(seconds: 10));
 
       return response.statusCode == 200;
@@ -219,7 +354,7 @@ class M3U8Api {
     }
   }
 
-  // In M3U8Api class
+  // Updated TV show search with immediate streaming support
   Future<Map<String, dynamic>> searchTvShow({
     required String showName,
     required int season,
@@ -227,6 +362,7 @@ class M3U8Api {
     String? quality,
     bool fetchSubs = false,
     Function(String)? onStatusUpdate,
+    Function(String)? onStreamReady,
   }) async {
     try {
       // Start the search
@@ -255,8 +391,8 @@ class M3U8Api {
         throw Exception('No search ID received');
       }
 
-      // Poll for status updates
-      return await _pollSearchStatus(searchId, onStatusUpdate);
+      // Poll for status updates with stream ready callback
+      return await _pollSearchStatus(searchId, onStatusUpdate, onStreamReady);
     } catch (e) {
       throw Exception('Search failed: $e');
     }
@@ -270,6 +406,7 @@ class M3U8Api {
     String? quality,
     bool fetchSubs = false,
     Function(String)? onStatusUpdate,
+    Function(String)? onStreamReady,
   }) async {
     try {
       // Start the search
@@ -298,8 +435,48 @@ class M3U8Api {
         throw Exception('No search ID received');
       }
 
-      // Poll for status updates
-      return await _pollSearchStatus(searchId, onStatusUpdate);
+      // Poll for status updates with stream ready callback
+      return await _pollSearchStatus(searchId, onStatusUpdate, onStreamReady);
+    } catch (e) {
+      throw Exception('Search failed: $e');
+    }
+  }
+
+  // Search movie by TMDB ID with immediate streaming
+  Future<Map<String, dynamic>> searchMovieByTmdbId({
+    required int tmdbId,
+    String? quality,
+    bool fetchSubs = false,
+    Function(String)? onStatusUpdate,
+    Function(String)? onStreamReady,
+  }) async {
+    try {
+      // Start the search
+      final startResponse = await http.post(
+        Uri.parse('$baseUrl/search/start'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'moviename': '', // Empty name since we're using TMDB ID
+          'tmdb_id': tmdbId.toString(),
+          'type': 'movie',
+          'quality': quality,
+          'fetch_subs': fetchSubs ? 'yes' : 'no',
+        }),
+      );
+
+      if (startResponse.statusCode != 200) {
+        throw Exception('Failed to start search: ${startResponse.statusCode}');
+      }
+
+      final startData = jsonDecode(startResponse.body);
+      final searchId = startData['search_id'];
+
+      if (searchId == null) {
+        throw Exception('No search ID received');
+      }
+
+      // Poll for status updates with stream ready callback
+      return await _pollSearchStatus(searchId, onStatusUpdate, onStreamReady);
     } catch (e) {
       throw Exception('Search failed: $e');
     }
