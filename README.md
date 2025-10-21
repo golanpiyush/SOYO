@@ -9,12 +9,16 @@
   [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
   [![Stars](https://img.shields.io/github/stars/golanpiyush/SOYO?style=social)](https://github.com/golanpiyush/SOYO/stargazers)
 </div>
+
 ## 🌐 API Status
 
-[![Movies API](https://img.shields.io/website?url=https%3A%2F%2Fdb.cineby.app%2F3&label=Movies&up_message=Online&down_message=Offline&style=flat-square&logo=playstation&color=brightgreen)](https://db.cineby.app/3)
-[![TV Shows API](https://img.shields.io/website?url=https%3A%2F%2Fcinemaos.me%2F&label=TV%20Shows&up_message=Online&down_message=Offline&style=flat-square&logo=appletv&color=brightgreen)](https://cinemaos.me/)
-[![Anime API](https://img.shields.io/website?url=https%3A%2F%2Fflixer.su%2F&label=Anime&up_message=Online&down_message=Offline&style=flat-square&logo=crunchyroll&color=brightgreen)](https://flixer.su/)
-[![NSFW API](https://img.shields.io/website?url=https%3A%2F%2Fxhamster44.desi%2F&label=NSFW&up_message=Online&down_message=Offline&style=flat-square&logo=firefox&color=brightgreen)](https://xhamster44.desi/)
+| Category | Status |
+|-----------|---------|
+| 🎬 **Movies** | [![Movies API](https://img.shields.io/website?url=https%3A%2F%2Fdb.cineby.app%2F3&label=Movies&up_message=Online&down_message=Offline&style=for-the-badge&logo=playstation&color=brightgreen)](https://db.cineby.app/3) |
+| 📺 **TV Shows** | [![TV Shows API](https://img.shields.io/website?url=https%3A%2F%2Fcinemaos.me%2F&label=TV%20Shows&up_message=Online&down_message=Offline&style=for-the-badge&logo=appletv&color=brightgreen)](https://cinemaos.me/) |
+| 🎌 **Anime** | [![Anime API](https://img.shields.io/website?url=https%3A%2F%2Fflixer.su%2F&label=Anime&up_message=Online&down_message=Offline&style=for-the-badge&logo=crunchyroll&color=brightgreen)](https://flixer.su/) |
+| 🔞 **NSFW** | [![NSFW API](https://img.shields.io/website?url=https%3A%2F%2Fxhamster44.desi%2F&label=NSFW&up_message=Online&down_message=Offline&style=for-the-badge&logo=firefox&color=brightgreen)](https://xhamster44.desi/) |
+
 
 **SOYO** is a modern, feature-rich streaming application built with Flutter that provides seamless access to movies and TV shows from multiple streaming platforms. Experience cinema in your pocket with stunning animations, intuitive design, and powerful streaming capabilities.
 
