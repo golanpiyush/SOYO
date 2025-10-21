@@ -26,6 +26,7 @@
 
 
 
+
 **SOYO** is a modern, feature-rich streaming application built with Flutter that provides seamless access to movies and TV shows from multiple streaming platforms. Experience cinema in your pocket with stunning animations, intuitive design, and powerful streaming capabilities.
 
 ## ✨ Features
