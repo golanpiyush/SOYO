@@ -14,65 +14,14 @@
 
 <div align="center">
 
-<table>
-  <tr>
-    <th>Category</th>
-    <th>Status</th>
-  </tr>
-
-  <tr>
-    <td>🎬 <b>Movies</b></td>
-    <td>
-      <a href="#" onclick="showStatus('movies-status'); return false;">
-        <img src="https://img.shields.io/website?url=https%3A%2F%2Fdb.cineby.app%2F3&label=Movies&up_message=Online&down_message=Failing&style=for-the-badge&logo=playstation&color=brightgreen">
-      </a>
-      <div id="movies-status" style="margin-top:6px;"></div>
-    </td>
-  </tr>
-
-  <tr>
-    <td>📺 <b>TV Shows</b></td>
-    <td>
-      <a href="#" onclick="showStatus('tv-status'); return false;">
-        <img src="https://img.shields.io/website?url=https%3A%2F%2Fcinemaos.me%2F&label=TV%20Shows&up_message=Online&down_message=Failing&style=for-the-badge&logo=appletv&color=brightgreen">
-      </a>
-      <div id="tv-status" style="margin-top:6px;"></div>
-    </td>
-  </tr>
-
-  <tr>
-    <td>🎌 <b>Anime</b></td>
-    <td>
-      <a href="#" onclick="showStatus('anime-status'); return false;">
-        <img src="https://img.shields.io/website?url=https%3A%2F%2Fflixer.su%2F&label=Anime&up_message=Online&down_message=Failing&style=for-the-badge&logo=crunchyroll&color=brightgreen">
-      </a>
-      <div id="anime-status" style="margin-top:6px;"></div>
-    </td>
-  </tr>
-
-  <tr>
-    <td>🔞 <b>NSFW</b></td>
-    <td>
-      <a href="#" onclick="showStatus('nsfw-status'); return false;">
-        <img src="https://img.shields.io/website?url=https%3A%2F%2Fxhamster44.desi%2F&label=NSFW&up_message=Online&down_message=Failing&style=for-the-badge&logo=firefox&color=brightgreen">
-      </a>
-      <div id="nsfw-status" style="margin-top:6px;"></div>
-    </td>
-  </tr>
-</table>
-
-<script>
-function showStatus(id) {
-  const el = document.getElementById(id);
-  el.innerHTML = '<span style="color:limegreen; font-weight:bold;">✅ Server is healthy</span>';
-}
-</script>
+| Category | Status |
+|:---------:|:------:|
+| 🎬 **Movies** | [![Movies API](https://img.shields.io/website?url=https%3A%2F%2Fdb.cineby.app%2F3&label=Movies&up_message=Online&down_message=Failing&style=for-the-badge&logo=playstation&color=brightgreen)](https://db.cineby.app/3) |
+| 📺 **TV Shows** | [![TV Shows API](https://img.shields.io/website?url=https%3A%2F%2Fcinemaos.me%2F&label=TV%20Shows&up_message=Online&down_message=Failing&style=for-the-badge&logo=appletv&color=brightgreen)](https://cinemaos.me/) |
+| 🎌 **Anime** | [![Anime API](https://img.shields.io/website?url=https%3A%2F%2Fflixer.su%2F&label=Anime&up_message=Online&down_message=Failing&style=for-the-badge&logo=crunchyroll&color=brightgreen)](https://flixer.su/) |
+| 🔞 **NSFW** | [![NSFW API](https://img.shields.io/website?url=https%3A%2F%2Fxhamster44.desi%2F&label=NSFW&up_message=Online&down_message=Failing&style=for-the-badge&logo=firefox&color=brightgreen)](https://xhamster44.desi/) |
 
 </div>
-
-
-
-
 
 **SOYO** is a modern, feature-rich streaming application built with Flutter that provides seamless access to movies and TV shows from multiple streaming platforms. Experience cinema in your pocket with stunning animations, intuitive design, and powerful streaming capabilities.
 
