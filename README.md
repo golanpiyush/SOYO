@@ -9,7 +9,7 @@
   [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
   [![Stars](https://img.shields.io/github/stars/golanpiyush/SOYO?style=social)](https://github.com/golanpiyush/SOYO/stargazers)
 </div>
-### 🌐 API Status
+## 🌐 API Status
 
 [![Movies API](https://img.shields.io/website?url=https%3A%2F%2Fdb.cineby.app%2F3&label=Movies&up_message=Online&down_message=Offline&style=flat-square&logo=playstation&color=brightgreen)](https://db.cineby.app/3)
 [![TV Shows API](https://img.shields.io/website?url=https%3A%2F%2Fcinemaos.me%2F&label=TV%20Shows&up_message=Online&down_message=Offline&style=flat-square&logo=appletv&color=brightgreen)](https://cinemaos.me/)
