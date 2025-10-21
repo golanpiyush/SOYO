@@ -10,7 +10,7 @@
   [![Stars](https://img.shields.io/github/stars/golanpiyush/SOYO?style=social)](https://github.com/golanpiyush/SOYO/stargazers)
 </div>
 
-## 🌐 API Status
+## 🌐 Server Status
 
 <div align="center">
 
