@@ -11,7 +11,7 @@
 </div>
 
 ## 🌐 API Status
-
+<div align="center">
 | Category | Status |
 |-----------|---------|
 | 🎬 **Movies** | [![Movies API](https://img.shields.io/website?url=https%3A%2F%2Fdb.cineby.app%2F3&label=Movies&up_message=Online&down_message=Offline&style=for-the-badge&logo=playstation&color=brightgreen)](https://db.cineby.app/3) |
